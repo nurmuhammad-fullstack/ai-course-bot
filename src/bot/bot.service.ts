@@ -1,0 +1,123 @@
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Api, Bot, Context } from 'grammy';
+import { LessonsRepo } from '../repos/lessons.repo';
+import { UsersRepo } from '../repos/users.repo';
+import { RegistrationHandler } from './handlers/registration.handler';
+import { AdminHandler } from './handlers/admin.handler';
+import { StudentHandler } from './handlers/student.handler';
+import { ParentHandler } from './handlers/parent.handler';
+
+const ADMIN_CALLBACKS = /^(reg|att|lessonend|sched|taskadm|sub|shopadm|order):/;
+const STUDENT_CALLBACKS = /^(task|quiz|shop):/;
+
+@Injectable()
+export class BotService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(BotService.name);
+  private bot!: Bot;
+  private readonly adminChatId: string;
+
+  constructor(
+    private readonly config: ConfigService,
+    private readonly users: UsersRepo,
+    private readonly lessons: LessonsRepo,
+    private readonly registration: RegistrationHandler,
+    private readonly admin: AdminHandler,
+    private readonly student: StudentHandler,
+    private readonly parent: ParentHandler,
+  ) {
+    this.adminChatId = config.getOrThrow<string>('ADMIN_CHAT_ID');
+  }
+
+  get api(): Api {
+    return this.bot.api;
+  }
+
+  get adminId(): string {
+    return this.adminChatId;
+  }
+
+  async onModuleInit() {
+    await this.lessons.seedSchedule();
+
+    this.bot = new Bot(this.config.getOrThrow<string>('BOT_TOKEN'));
+
+    this.bot.on('callback_query:data', (ctx) => this.routeCallback(ctx));
+    this.bot.on('message', (ctx) => this.routeMessage(ctx));
+    this.bot.catch((err) => this.logger.error(`Bot xatosi: ${err.message}`, err.stack));
+
+    // start() uzoq yashovchi promise — kutmaymiz
+    void this.bot.start({
+      onStart: (me) => this.logger.log(`🤖 @${me.username} ishga tushdi`),
+    });
+  }
+
+  async onModuleDestroy() {
+    await this.bot?.stop();
+  }
+
+  private isAdmin(ctx: Context): boolean {
+    return String(ctx.from?.id) === this.adminChatId;
+  }
+
+  private async routeMessage(ctx: Context) {
+    try {
+      if (ctx.chat?.type !== 'private') return;
+
+      if (this.isAdmin(ctx)) {
+        await this.admin.handleMessage(ctx);
+        return;
+      }
+
+      const user = await this.users.byTelegramId(String(ctx.chat.id));
+      if (!user || user.role === 'pending') {
+        await this.registration.handleMessage(ctx);
+        return;
+      }
+      if (user.role === 'student') {
+        await this.student.handleMessage(ctx, user);
+        return;
+      }
+      if (user.role === 'parent') {
+        await this.parent.handleMessage(ctx, user);
+        return;
+      }
+    } catch (err) {
+      this.logger.error('routeMessage xatosi', err as Error);
+    }
+  }
+
+  private async routeCallback(ctx: Context) {
+    try {
+      const data = ctx.callbackQuery!.data!;
+
+      if (ADMIN_CALLBACKS.test(data)) {
+        if (!this.isAdmin(ctx)) {
+          await ctx.answerCallbackQuery({ text: 'Bu amal faqat admin uchun' });
+          return;
+        }
+        if (data.startsWith('reg:')) {
+          await this.registration.handleCallback(ctx, data);
+        } else {
+          await this.admin.handleCallback(ctx, data);
+        }
+        return;
+      }
+
+      if (STUDENT_CALLBACKS.test(data)) {
+        const user = await this.users.byTelegramId(String(ctx.from!.id));
+        if (!user || user.role !== 'student') {
+          await ctx.answerCallbackQuery({ text: "Bu amal faqat o'quvchilar uchun" });
+          return;
+        }
+        await this.student.handleCallback(ctx, data, user);
+        return;
+      }
+
+      await ctx.answerCallbackQuery();
+    } catch (err) {
+      this.logger.error('routeCallback xatosi', err as Error);
+      await ctx.answerCallbackQuery({ text: 'Xatolik yuz berdi' }).catch(() => undefined);
+    }
+  }
+}
