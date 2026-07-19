@@ -46,10 +46,20 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.bot.on('message', (ctx) => this.routeMessage(ctx));
     this.bot.catch((err) => this.logger.error(`Bot xatosi: ${err.message}`, err.stack));
 
-    // start() uzoq yashovchi promise — kutmaymiz
-    void this.bot.start({
-      onStart: (me) => this.logger.log(`🤖 @${me.username} ishga tushdi`),
-    });
+    this.startPolling();
+  }
+
+  /** 409 (boshqa instansiya) va tarmoq xatolarida qulamasdan qayta urinadi */
+  private startPolling(attempt = 0) {
+    this.bot
+      .start({ onStart: (me) => this.logger.log(`🤖 @${me.username} ishga tushdi`) })
+      .catch((err) => {
+        const delay = Math.min(60_000, 5_000 * (attempt + 1));
+        this.logger.error(
+          `Polling to'xtadi (${err?.message ?? err}). ${delay / 1000}s dan keyin qayta urinaman...`,
+        );
+        setTimeout(() => this.startPolling(attempt + 1), delay);
+      });
   }
 
   async onModuleDestroy() {
