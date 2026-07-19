@@ -9,7 +9,16 @@ import { TasksRepo } from '../../repos/tasks.repo';
 import { ShopRepo } from '../../repos/shop.repo';
 import { StateStore } from '../state';
 import { BTN, adminMenu, cancelKeyboard, doneCancelKeyboard } from '../keyboards';
-import { ATT_LABELS, DAY_NAMES, fmtMoney, parseTime, todayDate, todayDayOfWeek } from '../format';
+import {
+  ATT_LABELS,
+  DAY_NAMES,
+  fmtDateUz,
+  fmtMoney,
+  parseDateInput,
+  parseTime,
+  todayDate,
+  todayDayOfWeek,
+} from '../format';
 import { AttStatus, LessonFlowService } from '../../services/lesson-flow.service';
 import { SettingsRepo } from '../../repos/settings.repo';
 
@@ -83,7 +92,27 @@ export class AdminHandler {
         return this.showShopAdmin(ctx);
       case BTN.REPORT:
         return this.showReport(ctx);
+      case BTN.PAYMENTS:
+        return this.showPayments(ctx);
     }
+  }
+
+  private async showPayments(ctx: Context) {
+    const students = await this.users.listByRole('student');
+    if (!students.length) {
+      await ctx.reply("📭 Hali o'quvchilar yo'q.");
+      return;
+    }
+    const kb = new InlineKeyboard();
+    let msg = "💳 To'lovlar:\n";
+    for (const s of students) {
+      const pay = await this.payments.status(s.id);
+      const due = pay.dueDate ? `📅 ${fmtDateUz(pay.dueDate)}` : '📅 sana belgilanmagan';
+      msg += `\n👤 ${s.name}\n   O'tildi: ${pay.chargedCount} ta dars | Qoldiq: ${fmtMoney(pay.remaining)}\n   ${due}\n`;
+      kb.text(`📅 ${s.name}`, `payd:${s.id}`).row();
+    }
+    msg += "\nTo'lov sanasini belgilash uchun o'quvchini tanlang.\nBot ota-onaga 3 kun oldin va o'sha kuni eslatadi.";
+    await ctx.reply(msg, { reply_markup: kb });
   }
 
   private async handleStateStep(ctx: Context, chatId: string, st: any, text?: string) {
@@ -120,6 +149,34 @@ export class AdminHandler {
           .text('✏️ Qayta yozish', 'hw:redo')
           .text('❌ Bekor qilish', 'hw:cancel'),
       });
+      return;
+    }
+
+    // To'lov sanasini belgilash
+    if (st.step === 'pay_due' && text) {
+      const student = await this.users.byId(st.studentId);
+      if (!student) {
+        this.state.clear(chatId);
+        await ctx.reply('❌ O‘quvchi topilmadi.', { reply_markup: adminMenu() });
+        return;
+      }
+      if (text === '-') {
+        await this.payments.setDueDate(st.studentId, null);
+        this.state.clear(chatId);
+        await ctx.reply(`✅ ${student.name} uchun to'lov sanasi o'chirildi.`, { reply_markup: adminMenu() });
+        return;
+      }
+      const iso = parseDateInput(text);
+      if (!iso) {
+        await ctx.reply("❌ Sana formatini tushunmadim. Masalan: 25.08 yoki 25.08.2026");
+        return;
+      }
+      await this.payments.setDueDate(st.studentId, iso);
+      this.state.clear(chatId);
+      await ctx.reply(
+        `✅ ${student.name} uchun to'lov sanasi: ${fmtDateUz(iso)}.\nOta-onaga 3 kun oldin va o'sha kuni eslatma boradi.`,
+        { reply_markup: adminMenu() },
+      );
       return;
     }
 
@@ -448,6 +505,22 @@ export class AdminHandler {
     // Uyga vazifa tasdig'i
     if (data === 'hw:send' || data === 'hw:redo' || data === 'hw:cancel') {
       return this.handleHomeworkCallback(ctx, data);
+    }
+
+    if (data.startsWith('payd:')) {
+      const studentId = parseInt(data.split(':')[1], 10);
+      const student = await this.users.byId(studentId);
+      if (!student) {
+        await ctx.answerCallbackQuery({ text: 'Topilmadi' });
+        return;
+      }
+      this.state.set(chatId, { step: 'pay_due', studentId });
+      await ctx.answerCallbackQuery();
+      await ctx.reply(
+        `📅 ${student.name} uchun to'lov sanasini kiriting:\n\nFormat: 25.08 yoki 25.08.2026\nSanani o'chirish uchun «-» yuboring.`,
+        { reply_markup: cancelKeyboard() },
+      );
+      return;
     }
 
     if (data.startsWith('sched:')) {

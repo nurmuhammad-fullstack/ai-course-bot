@@ -508,10 +508,32 @@ function openStudentSheet(st) {
         '<div class="detail-row"><span class="dr-label">' + icon('clipboard', 15) + 'Hisoblangan</span><span class="dr-value">' + fmtMoney(pay.charged || 0) + ' (' + (pay.chargedCount || 0) + ' dars)</span></div>' +
         '<div class="detail-row"><span class="dr-label">' + icon('coins', 15) + 'Qoldiq</span><span class="dr-value">' + fmtMoney(pay.remaining || 0) + ' · ' + (pay.lessonsLeft != null ? pay.lessonsLeft : '?') + ' dars</span></div>' +
         '<div class="detail-row"><span class="dr-label">' + icon('calendar', 15) + 'Kurs jami</span><span class="dr-value">' + fmtMoney(pay.total || 0) + ' · ' + (pay.lessonsCount || 0) + ' dars</span></div>' +
+        '<div class="detail-row"><span class="dr-label">' + icon('calendar', 15) + 'To’lov sanasi</span><span class="dr-value">' + (pay.dueDate ? fmtDate(pay.dueDate) : 'belgilanmagan') + '</span></div>' +
+      '</div>' +
+      '<div class="field" style="margin-top:14px">' +
+        '<label style="font-size:13px;color:var(--text-2);display:block;margin-bottom:6px" for="due-date-input">To’lov sanasini o’zgartirish (3 kun oldin eslatma boradi)</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input id="due-date-input" type="date" style="flex:1" value="' + (pay.dueDate || '') + '" />' +
+          '<button type="button" class="btn btn-primary btn-sm" data-act="save-due">Saqlash</button>' +
+        '</div>' +
+        '<div data-role="due-msg"></div>' +
       '</div>' +
     '</div>'
   );
-  openSheet(content);
+  const close = openSheet(content);
+  content.querySelector('[data-act="save-due"]').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const val = content.querySelector('#due-date-input').value || null;
+    btn.disabled = true;
+    api('/api/admin/payments/' + st.id, { method: 'PUT', body: { dueDate: val } })
+      .then(() => { close(); renderAdminStudents(); })
+      .catch((err) => {
+        btn.disabled = false;
+        const box = content.querySelector('[data-role="due-msg"]');
+        clear(box);
+        box.appendChild(el('<div class="err-msg">' + esc(err.message) + '</div>'));
+      });
+  });
 }
 
 /* =========================================================
@@ -1256,7 +1278,7 @@ function renderParent() {
             '<h3 style="margin:0">' + esc(ch.name) + '</h3>' +
             '<span class="status-chip green">' + icon('coins', 14) + (ch.coins != null ? ch.coins : 0) + ' coin</span>' +
           '</div>' +
-          '<div class="cc-sub" style="font-size:13px;color:var(--text-2)">To’langan: ' + paid + '/' + total + ' dars</div>' +
+          '<div class="cc-sub" style="font-size:13px;color:var(--text-2)">To’langan: ' + paid + '/' + total + ' dars' + (pay.dueDate ? ' · Keyingi to’lov: ' + fmtDate(pay.dueDate) : '') + '</div>' +
           '<div class="pay-grid"></div>' +
           '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">' +
             '<span style="font-size:22px;font-weight:700">' + fmtMoney(pay.remaining || 0) + '</span>' +

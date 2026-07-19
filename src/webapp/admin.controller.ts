@@ -205,6 +205,26 @@ export class AdminController {
     return result;
   }
 
+  // ── To'lov sanasi ───────────────────────────────────────────────────────────
+  @Put('payments/:studentId')
+  async setDueDate(
+    @Param('studentId', ParseIntPipe) studentId: number,
+    @Body() body: { dueDate?: string | null },
+  ) {
+    const student = await this.users.byId(studentId);
+    if (!student || student.role !== 'student') throw new NotFoundException("O'quvchi topilmadi");
+    const raw = body.dueDate ?? null;
+    if (raw === null || raw === '') {
+      await this.payments.setDueDate(studentId, null);
+      return { ok: true };
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      throw new BadRequestException("Sana formati noto'g'ri (YYYY-MM-DD)");
+    }
+    await this.payments.setDueDate(studentId, raw);
+    return { ok: true };
+  }
+
   // ── Vazifalar ───────────────────────────────────────────────────────────────
   @Get('tasks')
   async listTasks() {

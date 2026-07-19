@@ -7,8 +7,20 @@ import {
   PRE_LESSON_MINUTES,
   TZ_OFFSET_HOURS,
 } from '../config';
-import { addMinutes, DAY_NAMES, nowHM, parseTime, todayDayOfWeek } from '../bot/format';
+import {
+  addDays,
+  addMinutes,
+  DAY_NAMES,
+  fmtDateUz,
+  fmtMoney,
+  nowHM,
+  parseTime,
+  todayDate,
+  todayDayOfWeek,
+} from '../bot/format';
 import { LessonsRepo } from '../repos/lessons.repo';
+import { PaymentsRepo } from '../repos/payments.repo';
+import { UsersRepo } from '../repos/users.repo';
 import { SettingsRepo } from '../repos/settings.repo';
 import { StateStore } from '../bot/state';
 import { AdminHandler } from '../bot/handlers/admin.handler';
@@ -26,7 +38,41 @@ export class SchedulerService {
     private readonly botService: BotService,
     private readonly settings: SettingsRepo,
     private readonly state: StateStore,
+    private readonly payments: PaymentsRepo,
+    private readonly users: UsersRepo,
   ) {}
+
+  /** Har kuni 10:00 (Toshkent): to'lov sanasi eslatmalari — 3 kun oldin va o'sha kuni */
+  @Cron(`0 ${10 - TZ_OFFSET_HOURS} * * *`, { utcOffset: 0 })
+  async paymentReminders() {
+    const today = todayDate();
+    const rows = await this.payments.withDueDates();
+    for (const p of rows) {
+      const isDueToday = p.dueDate === today;
+      const isThreeDaysBefore = p.dueDate === addDays(today, 3);
+      if (!isDueToday && !isThreeDaysBefore) continue;
+
+      const student = await this.users.byId(p.studentId);
+      if (!student) continue;
+      const pay = await this.payments.status(p.studentId);
+      const when = isDueToday ? 'BUGUN' : `3 kundan keyin (${fmtDateUz(p.dueDate!)})`;
+      const text =
+        `💳 To'lov eslatmasi!\n\n` +
+        `${student.name} uchun to'lov sanasi ${when}.\n\n` +
+        `📊 Holat: ${pay.chargedCount} ta dars o'tildi, hisobingizda ${fmtMoney(pay.remaining)} qoldi (${pay.lessonsLeft} ta dars).`;
+
+      const parents = await this.users.parentsOfStudent(p.studentId);
+      for (const parent of parents) {
+        await this.botService.api.sendMessage(parent.telegramId, text).catch(() => undefined);
+      }
+      await this.botService.api
+        .sendMessage(
+          this.botService.adminId,
+          `🔔 ${student.name} ota-onasiga to'lov eslatmasi yuborildi (${isDueToday ? 'bugun to‘lov kuni' : "3 kun qoldi"}).${parents.length ? '' : "\n⚠️ Bu o'quvchiga ota-ona biriktirilmagan — eslatma hech kimga bormadi!"}`,
+        )
+        .catch(() => undefined);
+    }
+  }
 
   /**
    * Ertalabki 11:00 (Toshkent) — dars kunlari avval ADMINDAN vaqtni tasdiqlash so'raladi.

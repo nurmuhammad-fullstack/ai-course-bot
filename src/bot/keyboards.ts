@@ -10,6 +10,7 @@ export const BTN = {
   SUBMISSIONS: '📤 Topshiriqlar',
   SHOP_ADMIN: '🛍 Coinshop',
   REPORT: '📊 Hisobot',
+  PAYMENTS: "💳 To'lovlar",
   // student
   MY_COINS: '💰 Coinlarim',
   TASKS: '🎯 Vazifalar',
@@ -28,7 +29,8 @@ export function adminMenu() {
     .text(BTN.REQUESTS).text(BTN.STUDENTS).row()
     .text(BTN.SCHEDULE).text(BTN.FINISH_LESSON).row()
     .text(BTN.ADD_TASK).text(BTN.SUBMISSIONS).row()
-    .text(BTN.SHOP_ADMIN).text(BTN.REPORT)
+    .text(BTN.SHOP_ADMIN).text(BTN.REPORT).row()
+    .text(BTN.PAYMENTS)
     .resized().persistent();
 }
 
