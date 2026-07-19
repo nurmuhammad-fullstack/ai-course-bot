@@ -274,6 +274,7 @@ function screenError(message, retry) {
    ========================================================= */
 function renderAdminHome() {
   if (state.view && state.view.name === 'finishLesson') { renderFinishLesson(); return; }
+  if (state.view && state.view.name === 'payments') { renderPaymentsView(); return; }
 
   api('/api/admin/home').then((data) => {
     const s = el('<div class="screen"></div>');
@@ -344,8 +345,110 @@ function renderAdminHome() {
       s.appendChild(card);
     });
 
+    /* To'lovlar bo'limi */
+    s.appendChild(el('<h2 class="section-title">Moliya</h2>'));
+    const payCard = el(
+      '<button type="button" class="cat-card">' +
+        '<div class="cc-icon">' + icon('coins', 22) + '</div>' +
+        '<div class="cc-body"><div class="cc-title">To’lovlar</div><div class="cc-sub">Qoldiqlar va to’lov sanalari</div></div>' +
+        '<div class="cc-right">' + icon('chevron', 20) + '</div>' +
+      '</button>'
+    );
+    payCard.addEventListener('click', () => { state.view = { name: 'payments' }; renderApp(); });
+    s.appendChild(payCard);
+
     mountScreen(s);
   }).catch((e) => { if (!e.silent) screenError(e.message, renderAdminHome); });
+}
+
+/* =========================================================
+   ADMIN: TO'LOVLAR
+   ========================================================= */
+function renderPaymentsView() {
+  api('/api/admin/students').then((students) => {
+    const s = el('<div class="screen"></div>');
+
+    const back = el('<button type="button" class="back-btn">' + icon('chevron', 18) + 'Orqaga</button>');
+    back.addEventListener('click', () => { state.view = null; renderApp(); });
+    s.appendChild(back);
+
+    const totalRemaining = students.reduce((sum, st) => sum + ((st.pay || {}).remaining || 0), 0);
+    s.appendChild(el(
+      '<section class="header-card">' +
+        '<div class="hc-date">' + icon('coins', 15) + '<span>' + students.length + ' ta o’quvchi</span></div>' +
+        '<div class="hc-title">To’lovlar</div>' +
+        '<div class="hc-sub">Jami qoldiq: ' + fmtMoney(totalRemaining) + '</div>' +
+      '</section>'
+    ));
+
+    if (!students.length) {
+      s.appendChild(el('<div class="empty-state">' + icon('users', 32) + '<div>Hozircha o’quvchilar yo’q</div></div>'));
+    }
+
+    students.forEach((st) => {
+      const pay = st.pay || {};
+      const card = el(
+        '<button type="button" class="cat-card">' +
+          '<div class="cc-icon">' + icon('coins', 22) + '</div>' +
+          '<div class="cc-body">' +
+            '<div class="cc-title">' + esc(st.name) + '</div>' +
+            '<div class="cc-sub">' +
+              '<span class="strong">' + fmtMoney(pay.remaining || 0) + '</span>' +
+              '<span>· ' + (pay.chargedCount || 0) + '/' + (pay.lessonsCount || 12) + ' dars o’tildi</span>' +
+            '</div>' +
+            '<div class="cc-sub" style="margin-top:2px">' + icon('calendar', 13) + ' ' +
+              (pay.dueDate ? 'Keyingi to’lov: ' + fmtDate(pay.dueDate) : 'Sana belgilanmagan') +
+            '</div>' +
+          '</div>' +
+          '<div class="cc-right">' + icon('chevron', 20) + '</div>' +
+        '</button>'
+      );
+      card.addEventListener('click', () => openDueDateSheet(st));
+      s.appendChild(card);
+    });
+
+    mountScreen(s);
+  }).catch((e) => { if (!e.silent) screenError(e.message, renderPaymentsView); });
+}
+
+function openDueDateSheet(st) {
+  const pay = st.pay || {};
+  const content = el(
+    '<div>' +
+      '<h3>' + esc(st.name) + ' — to’lov</h3>' +
+      '<div class="detail-list">' +
+        '<div class="detail-row"><span class="dr-label">' + icon('clipboard', 15) + 'O’tilgan darslar</span><span class="dr-value">' + (pay.chargedCount || 0) + ' ta · ' + fmtMoney(pay.charged || 0) + '</span></div>' +
+        '<div class="detail-row"><span class="dr-label">' + icon('coins', 15) + 'Qoldiq</span><span class="dr-value">' + fmtMoney(pay.remaining || 0) + ' · ' + (pay.lessonsLeft != null ? pay.lessonsLeft : '?') + ' dars</span></div>' +
+      '</div>' +
+      '<div class="field" style="margin-top:14px">' +
+        '<label for="pay-due-input">To’lov sanasi (3 kun oldin va o’sha kuni ota-onaga eslatma boradi)</label>' +
+        '<input id="pay-due-input" type="date" value="' + (pay.dueDate || '') + '" />' +
+      '</div>' +
+      '<div class="btn-row">' +
+        '<button type="button" class="btn btn-primary btn-sm" data-act="save">Saqlash</button>' +
+        '<button type="button" class="btn btn-red btn-sm" data-act="clear">Sanani o’chirish</button>' +
+      '</div>' +
+      '<div data-role="msg"></div>' +
+    '</div>'
+  );
+  const close = openSheet(content);
+  const save = (val, btn) => {
+    setBusy(btn, true);
+    api('/api/admin/payments/' + st.id, { method: 'PUT', body: { dueDate: val } })
+      .then(() => { close(); renderPaymentsView(); })
+      .catch((err) => {
+        setBusy(btn, false);
+        const box = content.querySelector('[data-role="msg"]');
+        clear(box);
+        box.appendChild(el('<div class="err-msg">' + esc(err.message) + '</div>'));
+      });
+  };
+  content.querySelector('[data-act="save"]').addEventListener('click', (e) => {
+    save(content.querySelector('#pay-due-input').value || null, e.currentTarget);
+  });
+  content.querySelector('[data-act="clear"]').addEventListener('click', (e) => {
+    save(null, e.currentTarget);
+  });
 }
 
 function openScheduleSheet(dow, currentTime) {
