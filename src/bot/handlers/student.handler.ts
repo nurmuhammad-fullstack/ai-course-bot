@@ -314,6 +314,12 @@ export class StudentHandler {
       return;
     }
     await this.coins.add(user.id, -item.price, `Buyurtma: ${item.name}`);
+    const afterBalance = await this.coins.balance(user.id);
+    if (afterBalance < 0) {
+      await this.coins.add(user.id, item.price, `Buyurtma bekor (balans yetmadi): ${item.name}`);
+      await ctx.answerCallbackQuery({ text: 'Coin yetarli emas', show_alert: true });
+      return;
+    }
     const order = await this.shop.createOrder(itemId, user.id);
     await ctx.answerCallbackQuery({ text: 'Buyurtma yuborildi! 🎉' });
     await ctx.reply(

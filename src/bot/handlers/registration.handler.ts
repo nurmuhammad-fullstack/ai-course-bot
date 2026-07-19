@@ -42,7 +42,8 @@ export class RegistrationHandler {
     }
 
     if (st?.step === 'reg_name' && text) {
-      this.state.set(chatId, { step: 'reg_phone', name: text });
+      const name = text.replace(/\s+/g, ' ').slice(0, 80);
+      this.state.set(chatId, { step: 'reg_phone', name });
       await ctx.reply(
         '📱 Telefon raqamingizni yuboring (tugmani bosing yoki yozib yuboring):',
         { reply_markup: phoneRequestKeyboard() },
@@ -51,7 +52,7 @@ export class RegistrationHandler {
     }
 
     if (st?.step === 'reg_phone') {
-      const phone = ctx.message?.contact?.phone_number ?? text;
+      const phone = (ctx.message?.contact?.phone_number ?? text)?.slice(0, 25);
       if (!phone || !/^\+?[\d\s-]{7,}$/.test(phone)) {
         await ctx.reply("❌ Raqam noto'g'ri ko'rinadi. Qaytadan yuboring:");
         return;

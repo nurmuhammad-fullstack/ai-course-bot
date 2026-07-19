@@ -259,6 +259,20 @@ export class AdminController {
     if (!body?.title?.trim() || !Number.isInteger(coinReward) || coinReward <= 0) {
       throw new BadRequestException("Noto'g'ri vazifa ma'lumoti");
     }
+    if (body.title.trim().length > 200) throw new BadRequestException('Nom juda uzun (max 200)');
+    if (coinReward > 100000) throw new BadRequestException('Coin mukofoti juda katta');
+    if ((body.description ?? '').length > 4000) throw new BadRequestException('Tavsif juda uzun (max 4000)');
+    if ((body.questions?.length ?? 0) > 50) throw new BadRequestException("Savollar soni ko'pi bilan 50 ta");
+    if (
+      body.questions?.some(
+        (q) =>
+          (q.question ?? '').length > 1000 ||
+          (q.options ?? []).length > 8 ||
+          (q.options ?? []).some((o) => String(o).length > 300),
+      )
+    ) {
+      throw new BadRequestException('Savol/variantlar juda uzun');
+    }
 
     if (body.type === 'assignment') {
       const task = await this.tasks.create({
@@ -381,6 +395,9 @@ export class AdminController {
     const price = Number(body?.price);
     if (!body?.name?.trim() || !Number.isInteger(price) || price <= 0) {
       throw new BadRequestException("Noto'g'ri sovg'a ma'lumoti");
+    }
+    if (body.name.trim().length > 200 || price > 1000000) {
+      throw new BadRequestException("Nom yoki narx chegaradan oshgan");
     }
     const item = await this.shop.addItem(body.name.trim(), price);
     await this.notify.broadcastToStudents(

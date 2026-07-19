@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 /**
  * Telegram Mini App initData imzosini tekshiradi.
@@ -17,8 +17,10 @@ export function validateInitData(initData: string, botToken: string): { userId: 
       .join('\n');
 
     const secretKey = createHmac('sha256', 'WebAppData').update(botToken).digest();
-    const expected = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-    if (expected !== hash) return null;
+    const expected = createHmac('sha256', secretKey).update(dataCheckString).digest();
+    const given = Buffer.from(hash, 'hex');
+    // timing-hujumdan himoya: doimiy vaqtli taqqoslash
+    if (given.length !== expected.length || !timingSafeEqual(expected, given)) return null;
 
     const authDate = parseInt(params.get('auth_date') ?? '0', 10);
     if (!authDate || Date.now() / 1000 - authDate > 24 * 60 * 60) return null; // 24 soat

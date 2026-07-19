@@ -65,11 +65,20 @@ export class TasksRepo {
     return rows[0];
   }
 
-  async saveQuizResult(taskId: number, studentId: number, score: number, total: number, coins: number) {
-    await this.db
+  /** true — yangi natija saqlandi; false — allaqachon mavjud (takror urinish) */
+  async saveQuizResult(
+    taskId: number,
+    studentId: number,
+    score: number,
+    total: number,
+    coins: number,
+  ): Promise<boolean> {
+    const rows = await this.db
       .insert(quizResults)
       .values({ taskId, studentId, score, total, coins })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning();
+    return rows.length > 0;
   }
 
   async upsertSubmission(data: {

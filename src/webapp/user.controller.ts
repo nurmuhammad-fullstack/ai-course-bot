@@ -139,7 +139,9 @@ export class UserController {
     const total = questions.length;
     const coins = Math.round((task.coinReward * score) / total);
 
-    await this.tasks.saveQuizResult(taskId, user.id, score, total, coins);
+    // Race himoyasi: natija faqat birinchi marta saqlansa coin beriladi
+    const saved = await this.tasks.saveQuizResult(taskId, user.id, score, total, coins);
+    if (!saved) throw new BadRequestException('Siz bu testni allaqachon ishlagansiz');
     if (coins > 0) {
       await this.coins.add(user.id, coins, `Test: ${task.title} (${score}/${total})`);
     }
@@ -163,6 +165,7 @@ export class UserController {
     }
     const text = body?.text?.trim();
     if (!text) throw new BadRequestException('Matn kiriting');
+    if (text.length > 4000) throw new BadRequestException('Matn juda uzun (maksimum 4000 belgi)');
 
     const existing = await this.tasks.submissionFor(taskId, user.id);
     if (existing?.status === 'approved') {
@@ -206,11 +209,17 @@ export class UserController {
     }
 
     await this.coins.add(user.id, -item.price, `Buyurtma: ${item.name}`);
+    // Race himoyasi: parallel xaridlar balansni minusga tushirsa — qaytarib rad etamiz
+    const afterBalance = await this.coins.balance(user.id);
+    if (afterBalance < 0) {
+      await this.coins.add(user.id, item.price, `Buyurtma bekor (balans yetmadi): ${item.name}`);
+      throw new BadRequestException('Coin yetarli emas');
+    }
     await this.shop.createOrder(itemId, user.id);
     await this.notify.toAdmin(
       `🛒 Yangi buyurtma: ${user.name} — ${item.name} (${item.price} coin)`,
     );
-    return { ok: true, balance: balance - item.price };
+    return { ok: true, balance: afterBalance };
   }
 
   // ── Ota-ona ─────────────────────────────────────────────────────────────────
