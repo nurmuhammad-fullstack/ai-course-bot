@@ -904,10 +904,11 @@ function openStudentPicker(onPick) {
   const content = el('<div><h3>Qaysi o’quvchining ota-onasi?</h3><div data-role="list"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div></div>');
   const close = openSheet(content);
   const list = content.querySelector('[data-role="list"]');
-  api('/api/admin/students').then((students) => {
+  api('/api/admin/students').then((all) => {
     clear(list);
+    const students = all.filter((st) => !st.hasParent);
     if (!students.length) {
-      list.appendChild(el('<div class="empty-state">O’quvchilar topilmadi</div>'));
+      list.appendChild(el('<div class="empty-state">Ota-onasi biriktirilmagan o’quvchi qolmagan</div>'));
       return;
     }
     students.forEach((st) => {
@@ -1251,7 +1252,10 @@ function renderParent() {
 
       const card = el(
         '<div class="form-card">' +
-          '<h3>' + esc(ch.name) + '</h3>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">' +
+            '<h3 style="margin:0">' + esc(ch.name) + '</h3>' +
+            '<span class="status-chip green">' + icon('coins', 14) + (ch.coins != null ? ch.coins : 0) + ' coin</span>' +
+          '</div>' +
           '<div class="cc-sub" style="font-size:13px;color:var(--text-2)">To’langan: ' + paid + '/' + total + ' dars</div>' +
           '<div class="pay-grid"></div>' +
           '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">' +

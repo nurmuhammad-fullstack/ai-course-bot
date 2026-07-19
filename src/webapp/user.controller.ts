@@ -220,12 +220,14 @@ export class UserController {
     const children = await this.users.childrenOfParent(tgUser.id);
     const result = [];
     for (const child of children) {
-      const [pay, attendance] = await Promise.all([
+      const [pay, attendance, coins] = await Promise.all([
         this.payments.status(child.id),
         this.lessons.attendanceForStudent(child.id),
+        this.coins.balance(child.id),
       ]);
       result.push({
         name: child.name,
+        coins,
         pay,
         attendance: attendance.map((a) => ({ lessonDate: a.lessonDate, status: a.status })),
       });

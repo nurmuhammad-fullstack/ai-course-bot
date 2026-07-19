@@ -179,15 +179,17 @@ export class AdminController {
     const students = await this.users.listByRole('student');
     const result = [];
     for (const s of students) {
-      const [coins, pay, att] = await Promise.all([
+      const [coins, pay, att, parents] = await Promise.all([
         this.coins.balance(s.id),
         this.payments.status(s.id),
         this.lessons.attendanceForStudent(s.id),
+        this.users.parentsOfStudent(s.id),
       ]);
       result.push({
         id: s.id,
         name: s.name,
         phone: s.phone,
+        hasParent: parents.length > 0,
         coins,
         pay,
         attendance: {

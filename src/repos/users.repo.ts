@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, notInArray } from 'drizzle-orm';
 import { DRIZZLE, Db } from '../db/db.module';
 import { parentLinks, users } from '../db/schema';
 
@@ -53,6 +53,16 @@ export class UsersRepo {
       .insert(parentLinks)
       .values({ parentId, studentId })
       .onConflictDoNothing();
+  }
+
+  /** Hali ota-onasi biriktirilmagan o'quvchilar */
+  async studentsWithoutParent(): Promise<User[]> {
+    const linked = this.db.select({ id: parentLinks.studentId }).from(parentLinks);
+    return this.db
+      .select()
+      .from(users)
+      .where(and(eq(users.role, 'student'), notInArray(users.id, linked)))
+      .orderBy(users.name);
   }
 
   async parentsOfStudent(studentId: number): Promise<User[]> {

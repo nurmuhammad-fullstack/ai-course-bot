@@ -107,9 +107,12 @@ export class RegistrationHandler {
     }
 
     if (action === 'pa') {
-      const students = await this.users.listByRole('student');
+      const students = await this.users.studentsWithoutParent();
       if (!students.length) {
-        await ctx.answerCallbackQuery({ text: "Hali o'quvchilar yo'q!" });
+        await ctx.answerCallbackQuery({
+          text: "Ota-onasi biriktirilmagan o'quvchi qolmagan!",
+          show_alert: true,
+        });
         return;
       }
       const kb = new InlineKeyboard();
