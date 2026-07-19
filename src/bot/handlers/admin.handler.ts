@@ -636,6 +636,7 @@ export class AdminHandler {
 
     if (data === 'hw:cancel') {
       this.state.clear(chatId);
+      await this.settings.set('homework_pending', '');
       await ctx.answerCallbackQuery({ text: 'Bekor qilindi' });
       await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
       return;
@@ -676,6 +677,7 @@ export class AdminHandler {
       return;
     }
     this.state.clear(chatId);
+    await this.settings.set('homework_pending', '');
     await ctx.answerCallbackQuery({ text: 'Yuborildi ✅' });
     await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
     await ctx.reply('✅ Uyga vazifa guruhga yuborildi!');

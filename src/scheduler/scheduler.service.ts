@@ -9,6 +9,8 @@ import {
 } from '../config';
 import { addMinutes, DAY_NAMES, nowHM, parseTime, todayDayOfWeek } from '../bot/format';
 import { LessonsRepo } from '../repos/lessons.repo';
+import { SettingsRepo } from '../repos/settings.repo';
+import { StateStore } from '../bot/state';
 import { AdminHandler } from '../bot/handlers/admin.handler';
 import { BotService } from '../bot/bot.service';
 
@@ -22,6 +24,8 @@ export class SchedulerService {
     private readonly lessons: LessonsRepo,
     private readonly admin: AdminHandler,
     private readonly botService: BotService,
+    private readonly settings: SettingsRepo,
+    private readonly state: StateStore,
   ) {}
 
   /**
@@ -51,6 +55,8 @@ export class SchedulerService {
   /** Har daqiqa: darsdan 10 daqiqa oldin eslatma + dars tugagach admin so'rovi */
   @Cron('* * * * *', { utcOffset: 0 })
   async minuteTick() {
+    await this.homeworkReminder().catch((e) => this.logger.error(e?.message ?? e));
+
     const sched = await this.lessons.scheduleForDay(todayDayOfWeek());
     if (!sched) return;
 
@@ -86,5 +92,41 @@ export class SchedulerService {
         .catch(() => undefined);
       this.logger.log("Admin'ga dars yakuni so'rovi yuborildi");
     }
+  }
+
+  /** Uyga vazifa 1 soat ichida yuborilmasa — adminni eslatadi (yuborilguncha har soatda) */
+  private async homeworkReminder() {
+    const raw = await this.settings.get('homework_pending');
+    if (!raw) return;
+    let pending: { lessonId: number; lessonNumber: number; askedAt: number; lastRemind: number };
+    try {
+      pending = JSON.parse(raw);
+    } catch {
+      await this.settings.set('homework_pending', '');
+      return;
+    }
+
+    const HOUR = 60 * 60 * 1000;
+    const now = Date.now();
+    if (now - pending.askedAt < HOUR) return;
+    if (pending.lastRemind && now - pending.lastRemind < HOUR) return;
+
+    // Admin yozganda to'g'ridan-to'g'ri vazifa sifatida qabul qilinsin
+    this.state.set(this.botService.adminId, {
+      step: 'homework_text',
+      lessonId: pending.lessonId,
+      lessonNumber: pending.lessonNumber,
+    });
+    await this.botService.api
+      .sendMessage(
+        this.botService.adminId,
+        `⏰ Eslatma: ${pending.lessonNumber}-dars uchun uyga vazifani hali guruhga yubormadingiz!\n\n📝 Vazifa matnini yozib yuboring — guruhga chiroyli formatda tashlayman.\n(Kerak bo'lmasa «❌ Bekor qilish» deb yozing)`,
+      )
+      .catch(() => undefined);
+    await this.settings.set(
+      'homework_pending',
+      JSON.stringify({ ...pending, lastRemind: now }),
+    );
+    this.logger.log("Uyga vazifa eslatmasi yuborildi");
   }
 }

@@ -4,6 +4,7 @@ import { LessonsRepo } from '../repos/lessons.repo';
 import { PaymentsRepo } from '../repos/payments.repo';
 import { UsersRepo } from '../repos/users.repo';
 import { NotifyService } from './notify.service';
+import { SettingsRepo } from '../repos/settings.repo';
 import { StateStore } from '../bot/state';
 import { fmtMoney } from '../bot/format';
 
@@ -25,6 +26,7 @@ export class LessonFlowService {
     private readonly payments: PaymentsRepo,
     private readonly notify: NotifyService,
     private readonly state: StateStore,
+    private readonly settings: SettingsRepo,
   ) {}
 
   async markAttendance(lessonId: number, studentId: number, status: AttStatus) {
@@ -80,6 +82,11 @@ export class LessonFlowService {
       lessonId,
       lessonNumber,
     });
+    // 1 soatlik eslatma uchun kutilayotgan vazifani belgilab qo'yamiz
+    await this.settings.set(
+      'homework_pending',
+      JSON.stringify({ lessonId, lessonNumber, askedAt: Date.now(), lastRemind: 0 }),
+    );
     await this.notify.toAdmin(
       `✅ ${lessonNumber}-dars davomati to'liq belgilandi!\n\n📝 Endi uyga vazifani yozib yuboring — men uni chiroyli formatda o'quvchilar guruhiga tashlayman.\n\n(Kerak bo'lmasa «❌ Bekor qilish» deb yozing)`,
     );
