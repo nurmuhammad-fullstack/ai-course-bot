@@ -9,8 +9,9 @@ import { TasksRepo } from '../../repos/tasks.repo';
 import { ShopRepo } from '../../repos/shop.repo';
 import { StateStore } from '../state';
 import { BTN, adminMenu, cancelKeyboard, doneCancelKeyboard } from '../keyboards';
-import { ATT_LABELS, DAY_NAMES, fmtMoney, parseTime, todayDate } from '../format';
+import { ATT_LABELS, DAY_NAMES, fmtMoney, parseTime, todayDate, todayDayOfWeek } from '../format';
 import { AttStatus, LessonFlowService } from '../../services/lesson-flow.service';
+import { SettingsRepo } from '../../repos/settings.repo';
 
 @Injectable()
 export class AdminHandler {
@@ -23,6 +24,7 @@ export class AdminHandler {
     private readonly shop: ShopRepo,
     private readonly state: StateStore,
     private readonly lessonFlow: LessonFlowService,
+    private readonly settings: SettingsRepo,
   ) {}
 
   // ── Xabarlar ────────────────────────────────────────────────────────────────
@@ -58,11 +60,16 @@ export class AdminHandler {
         return this.showStudents(ctx);
       case BTN.SCHEDULE:
         return this.showSchedule(ctx);
-      case BTN.FINISH_LESSON:
+      case BTN.FINISH_LESSON: {
+        if (!(await this.lessons.scheduleForDay(todayDayOfWeek()))) {
+          await ctx.reply("❌ Bugun dars kuni emas — darsni yakunlab bo'lmaydi.\n\nDars kunlari: «🕐 Dars jadvali» bo'limida.");
+          return;
+        }
         await ctx.reply('Bugungi darsni yakunlab, davomat va to‘lovni belgilaymizmi?', {
           reply_markup: new InlineKeyboard().text('✅ Ha, yakunlash', 'lessonend:start'),
         });
         return;
+      }
       case BTN.ADD_TASK:
         await ctx.reply('Qanday vazifa qo‘shamiz?', {
           reply_markup: new InlineKeyboard()
@@ -80,6 +87,42 @@ export class AdminHandler {
   }
 
   private async handleStateStep(ctx: Context, chatId: string, st: any, text?: string) {
+    // Ertalabki tasdiqda bugungi dars vaqtini kiritish
+    if (st.step === 'daytime_time' && text) {
+      const t = parseTime(text);
+      if (!t) {
+        await ctx.reply("❌ Format noto'g'ri. Masalan: 15:30");
+        return;
+      }
+      await this.lessons.setTime(todayDayOfWeek(), text);
+      this.state.clear(chatId);
+      await ctx.reply(`✅ Bugungi dars ${text} ga o'rnatildi. O'quvchilarga xabar yuborilmoqda...`, {
+        reply_markup: adminMenu(),
+      });
+      await this.broadcastToStudents(
+        ctx.api,
+        `📚 Bugun darsimiz bor!\n🕐 Soat ${text} da boshlanadi. Tayyor bo'ling 💪`,
+      );
+      await ctx.reply("📨 O'quvchilarga xabar yuborildi.");
+      return;
+    }
+
+    // Uyga vazifa matni
+    if (st.step === 'homework_text' && text) {
+      const preview = this.formatHomework(st.lessonNumber, text);
+      this.state.set(chatId, { ...st, step: 'homework_confirm', text });
+      await ctx.reply('Guruhga shunday ko‘rinishda yuboriladi:', { reply_markup: adminMenu() });
+      await ctx.reply(preview, {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard()
+          .text('✅ Guruhga yuborish', 'hw:send')
+          .row()
+          .text('✏️ Qayta yozish', 'hw:redo')
+          .text('❌ Bekor qilish', 'hw:cancel'),
+      });
+      return;
+    }
+
     // Dars vaqtini o'zgartirish
     if (st.step === 'sched_time' && text) {
       const t = parseTime(text);
@@ -366,10 +409,45 @@ export class AdminHandler {
     const chatId = String(ctx.chat!.id);
 
     if (data === 'lessonend:start') {
+      if (!(await this.lessons.scheduleForDay(todayDayOfWeek()))) {
+        await ctx.answerCallbackQuery({ text: 'Bugun dars kuni emas!', show_alert: true });
+        return;
+      }
       await ctx.answerCallbackQuery();
       await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
       await this.finalizeLesson(ctx);
       return;
+    }
+
+    // Ertalabki dars vaqti tasdig'i
+    if (data === 'daytime:ok') {
+      const sched = await this.lessons.scheduleForDay(todayDayOfWeek());
+      if (!sched) {
+        await ctx.answerCallbackQuery({ text: 'Bugun dars kuni emas' });
+        return;
+      }
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageText(`✅ Tasdiqlandi: bugun ${sched.lessonTime} da dars. O'quvchilarga xabar yuborilmoqda...`).catch(() => undefined);
+      await this.broadcastToStudents(
+        ctx.api,
+        `📚 Bugun darsimiz bor!\n🕐 Soat ${sched.lessonTime} da boshlanadi. Tayyor bo'ling 💪`,
+      );
+      await ctx.reply("📨 O'quvchilarga xabar yuborildi.");
+      return;
+    }
+
+    if (data === 'daytime:edit') {
+      this.state.set(chatId, { step: 'daytime_time' });
+      await ctx.answerCallbackQuery();
+      await ctx.reply('🕐 Bugungi dars vaqtini kiriting (masalan 15:30):', {
+        reply_markup: cancelKeyboard(),
+      });
+      return;
+    }
+
+    // Uyga vazifa tasdig'i
+    if (data === 'hw:send' || data === 'hw:redo' || data === 'hw:cancel') {
+      return this.handleHomeworkCallback(ctx, data);
     }
 
     if (data.startsWith('sched:')) {
@@ -533,6 +611,74 @@ export class AdminHandler {
       ).catch(() => undefined);
     }
     await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
+  }
+
+  // ── Uyga vazifa ─────────────────────────────────────────────────────────────
+  private escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  private formatHomework(lessonNumber: number, text: string): string {
+    const [y, m, d] = todayDate().split('-').map(Number);
+    const months = ['yanvar','fevral','mart','aprel','may','iyun','iyul','avgust','sentabr','oktabr','noyabr','dekabr'];
+    return (
+      `📚 <b>UYGA VAZIFA</b>\n` +
+      `🗓 ${d}-${months[m - 1]} · ${lessonNumber}-dars\n\n` +
+      `${this.escapeHtml(text.trim())}\n\n` +
+      `✅ Bajarib bo‘lgach, botdagi «${BTN.TASKS.trim()}» bo‘limi orqali topshiring.\n` +
+      `💪 Omad!`
+    );
+  }
+
+  private async handleHomeworkCallback(ctx: Context, data: string) {
+    const chatId = String(ctx.chat!.id);
+    const st = this.state.get(chatId);
+
+    if (data === 'hw:cancel') {
+      this.state.clear(chatId);
+      await ctx.answerCallbackQuery({ text: 'Bekor qilindi' });
+      await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
+      return;
+    }
+
+    if (data === 'hw:redo') {
+      if (!st) {
+        await ctx.answerCallbackQuery({ text: 'Sessiya eskirgan' });
+        return;
+      }
+      this.state.set(chatId, { ...st, step: 'homework_text' });
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
+      await ctx.reply('📝 Uyga vazifani qaytadan yozib yuboring:');
+      return;
+    }
+
+    // hw:send
+    if (!st || st.step !== 'homework_confirm' || !st.text) {
+      await ctx.answerCallbackQuery({ text: 'Sessiya eskirgan. Qaytadan yozing.' });
+      return;
+    }
+    const groupId = await this.settings.get('group_chat_id');
+    if (!groupId) {
+      await ctx.answerCallbackQuery();
+      await ctx.reply(
+        "❌ Guruh hali ulanmagan!\n\nO'quvchilar guruhida (bot admin bo'lgan guruhda) «/guruh» deb yozing — men uni eslab qolaman. Keyin shu tugmani qayta bosing.",
+      );
+      return;
+    }
+    try {
+      await ctx.api.sendMessage(groupId, this.formatHomework(st.lessonNumber as number, st.text as string), {
+        parse_mode: 'HTML',
+      });
+    } catch {
+      await ctx.answerCallbackQuery();
+      await ctx.reply("❌ Guruhga yuborib bo'lmadi. Bot guruhda admin ekanini tekshiring, so'ng guruhda «/guruh» deb qayta ulang.");
+      return;
+    }
+    this.state.clear(chatId);
+    await ctx.answerCallbackQuery({ text: 'Yuborildi ✅' });
+    await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
+    await ctx.reply('✅ Uyga vazifa guruhga yuborildi!');
   }
 
   // ── Yordamchilar ────────────────────────────────────────────────────────────

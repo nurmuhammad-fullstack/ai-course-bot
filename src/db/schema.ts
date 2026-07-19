@@ -164,6 +164,12 @@ export const shopItems = pgTable('shop_items', {
   isActive: boolean('is_active').notNull().default(true),
 });
 
+// kalit-qiymat sozlamalar (masalan group_chat_id)
+export const settings = pgTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+
 // status: 'pending' | 'given' | 'rejected'
 export const shopOrders = pgTable('shop_orders', {
   id: serial('id').primaryKey(),

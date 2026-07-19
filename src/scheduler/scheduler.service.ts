@@ -24,18 +24,28 @@ export class SchedulerService {
     private readonly botService: BotService,
   ) {}
 
-  /** Ertalabki 11:00 (Toshkent) eslatmasi — faqat dars kunlari */
+  /**
+   * Ertalabki 11:00 (Toshkent) — dars kunlari avval ADMINDAN vaqtni tasdiqlash so'raladi.
+   * Admin tasdiqlagach (daytime:ok yoki yangi vaqt kiritib) o'quvchilarga push ketadi.
+   */
   @Cron(`0 ${MORNING_UTC_HOUR} * * *`, { utcOffset: 0 })
   async morningReminder() {
     const sched = await this.lessons.scheduleForDay(todayDayOfWeek());
     if (!sched) return;
 
-    const text = `📚 Bugun (${DAY_NAMES[sched.dayOfWeek]}) soat ${sched.lessonTime} da AI kursi darsi bor! Tayyor bo'ling 💪`;
-    await this.admin.broadcastToStudents(this.botService.api, text);
     await this.botService.api
-      .sendMessage(this.botService.adminId, `🔔 Eslatma yuborildi: bugun ${sched.lessonTime} da dars.`)
+      .sendMessage(
+        this.botService.adminId,
+        `☀️ Bugun (${DAY_NAMES[sched.dayOfWeek]}) dars kuni!\n\n🕐 Dars soat nechada bo'ladi? Joriy jadval: ${sched.lessonTime}\n\nTasdiqlasangiz, o'quvchilarga «Bugun darsimiz bor» xabari ketadi:`,
+        {
+          reply_markup: new InlineKeyboard()
+            .text(`✅ ${sched.lessonTime} — tasdiqlash`, 'daytime:ok')
+            .row()
+            .text('🕐 Boshqa vaqt kiritish', 'daytime:edit'),
+        },
+      )
       .catch(() => undefined);
-    this.logger.log('Ertalabki eslatma yuborildi');
+    this.logger.log("Admin'dan dars vaqti tasdig'i so'raldi");
   }
 
   /** Har daqiqa: darsdan 10 daqiqa oldin eslatma + dars tugagach admin so'rovi */

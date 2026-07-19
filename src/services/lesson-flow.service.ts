@@ -4,6 +4,7 @@ import { LessonsRepo } from '../repos/lessons.repo';
 import { PaymentsRepo } from '../repos/payments.repo';
 import { UsersRepo } from '../repos/users.repo';
 import { NotifyService } from './notify.service';
+import { StateStore } from '../bot/state';
 import { fmtMoney } from '../bot/format';
 
 export type AttStatus = 'came' | 'missed_unexcused' | 'missed_excused';
@@ -15,11 +16,15 @@ export type AttStatus = 'came' | 'missed_unexcused' | 'missed_excused';
  */
 @Injectable()
 export class LessonFlowService {
+  /** Uyga vazifa so'ralgan darslar (takror so'ramaslik uchun) */
+  private readonly homeworkPrompted = new Set<number>();
+
   constructor(
     private readonly users: UsersRepo,
     private readonly lessons: LessonsRepo,
     private readonly payments: PaymentsRepo,
     private readonly notify: NotifyService,
+    private readonly state: StateStore,
   ) {}
 
   async markAttendance(lessonId: number, studentId: number, status: AttStatus) {
@@ -45,6 +50,7 @@ export class LessonFlowService {
           `💳 ${student.name}: ${reason}.\n${fmtMoney(COURSE.LESSON_PRICE)} hisobdan yechildi.\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
         );
       }
+      await this.maybeAskHomework(lessonId, n);
       return { student, n, paymentNote, pay };
     }
 
@@ -55,6 +61,27 @@ export class LessonFlowService {
       studentId,
       `⚠️ ${student.name}: ${n}-darsga kela olmasligini oldindan ogohlantirgan.\nBu dars uchun to'lov yechilmadi.${removed ? ' (Avvalgi yechilgan summa qaytarildi.)' : ''}\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
     );
+    await this.maybeAskHomework(lessonId, n);
     return { student, n, paymentNote, pay };
+  }
+
+  /** Barcha o'quvchilar davomati belgilangach admindan uyga vazifa so'raydi (bir marta) */
+  private async maybeAskHomework(lessonId: number, lessonNumber: number) {
+    if (this.homeworkPrompted.has(lessonId)) return;
+    const [students, marked] = await Promise.all([
+      this.users.listByRole('student'),
+      this.lessons.attendanceForLesson(lessonId),
+    ]);
+    if (!students.length || students.some((s) => !marked.has(s.id))) return;
+
+    this.homeworkPrompted.add(lessonId);
+    this.state.set(this.notify.adminChatId, {
+      step: 'homework_text',
+      lessonId,
+      lessonNumber,
+    });
+    await this.notify.toAdmin(
+      `✅ ${lessonNumber}-dars davomati to'liq belgilandi!\n\n📝 Endi uyga vazifani yozib yuboring — men uni chiroyli formatda o'quvchilar guruhiga tashlayman.\n\n(Kerak bo'lmasa «❌ Bekor qilish» deb yozing)`,
+    );
   }
 }

@@ -9,6 +9,7 @@ import { CoinsRepo } from './repos/coins.repo';
 import { LessonsRepo } from './repos/lessons.repo';
 import { TasksRepo } from './repos/tasks.repo';
 import { ShopRepo } from './repos/shop.repo';
+import { SettingsRepo } from './repos/settings.repo';
 import { StateStore } from './bot/state';
 import { RegistrationHandler } from './bot/handlers/registration.handler';
 import { AdminHandler } from './bot/handlers/admin.handler';
@@ -36,6 +37,7 @@ import { UserController } from './webapp/user.controller';
     LessonsRepo,
     TasksRepo,
     ShopRepo,
+    SettingsRepo,
     StateStore,
     RegistrationHandler,
     AdminHandler,

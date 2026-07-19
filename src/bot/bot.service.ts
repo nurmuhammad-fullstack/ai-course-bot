@@ -2,13 +2,14 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { Api, Bot, Context } from 'grammy';
 import { LessonsRepo } from '../repos/lessons.repo';
+import { SettingsRepo } from '../repos/settings.repo';
 import { UsersRepo } from '../repos/users.repo';
 import { RegistrationHandler } from './handlers/registration.handler';
 import { AdminHandler } from './handlers/admin.handler';
 import { StudentHandler } from './handlers/student.handler';
 import { ParentHandler } from './handlers/parent.handler';
 
-const ADMIN_CALLBACKS = /^(reg|att|lessonend|sched|taskadm|sub|shopadm|order):/;
+const ADMIN_CALLBACKS = /^(reg|att|lessonend|sched|taskadm|sub|shopadm|order|daytime|hw):/;
 const STUDENT_CALLBACKS = /^(task|quiz|shop):/;
 
 @Injectable()
@@ -21,6 +22,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly users: UsersRepo,
     private readonly lessons: LessonsRepo,
+    private readonly settings: SettingsRepo,
     private readonly registration: RegistrationHandler,
     private readonly admin: AdminHandler,
     private readonly student: StudentHandler,
@@ -72,6 +74,17 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
   private async routeMessage(ctx: Context) {
     try {
+      // Guruh: admin «/guruh» yozsa — e'lonlar guruhi sifatida saqlaymiz
+      if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
+        const text = ctx.message?.text ?? '';
+        if (this.isAdmin(ctx) && /^\/guruh(@\w+)?$/.test(text.trim())) {
+          await this.settings.set('group_chat_id', String(ctx.chat.id));
+          await ctx.reply(
+            `✅ Bu guruh («${ctx.chat.title ?? ''}») e'lonlar guruhi sifatida saqlandi.\nUyga vazifalar shu yerga yuboriladi.`,
+          );
+        }
+        return;
+      }
       if (ctx.chat?.type !== 'private') return;
 
       if (this.isAdmin(ctx)) {

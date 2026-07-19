@@ -82,6 +82,10 @@ export class AdminController {
   // ── Dars / davomat ──────────────────────────────────────────────────────────
   @Post('lesson/finish')
   async finishLesson() {
+    const sched = await this.lessons.scheduleForDay(todayDayOfWeek());
+    if (!sched) {
+      throw new BadRequestException("Bugun dars kuni emas — darsni yakunlab bo'lmaydi");
+    }
     const lesson = await this.lessons.ensureLessonForDate(todayDate());
     const lessonNumber = await this.lessons.lessonNumber(lesson);
     const students = await this.users.listByRole('student');
