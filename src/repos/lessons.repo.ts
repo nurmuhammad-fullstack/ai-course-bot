@@ -67,6 +67,15 @@ export class LessonsRepo {
       });
   }
 
+  /** Dars bo'yicha barcha davomat (studentId → status) */
+  async attendanceForLesson(lessonId: number): Promise<Map<number, string>> {
+    const rows = await this.db
+      .select({ studentId: attendance.studentId, status: attendance.status })
+      .from(attendance)
+      .where(eq(attendance.lessonId, lessonId));
+    return new Map(rows.map((r) => [r.studentId, r.status]));
+  }
+
   async attendanceForStudent(studentId: number) {
     return this.db
       .select({

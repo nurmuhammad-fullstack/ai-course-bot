@@ -10,6 +10,7 @@ import { ShopRepo } from '../../repos/shop.repo';
 import { StateStore } from '../state';
 import { BTN, adminMenu, cancelKeyboard, doneCancelKeyboard } from '../keyboards';
 import { ATT_LABELS, DAY_NAMES, fmtMoney, parseTime, todayDate } from '../format';
+import { AttStatus, LessonFlowService } from '../../services/lesson-flow.service';
 
 @Injectable()
 export class AdminHandler {
@@ -21,6 +22,7 @@ export class AdminHandler {
     private readonly tasks: TasksRepo,
     private readonly shop: ShopRepo,
     private readonly state: StateStore,
+    private readonly lessonFlow: LessonFlowService,
   ) {}
 
   // ── Xabarlar ────────────────────────────────────────────────────────────────
@@ -444,45 +446,17 @@ export class AdminHandler {
     const [, code, lessonIdStr, studentIdStr] = data.split(':');
     const lessonId = parseInt(lessonIdStr, 10);
     const studentId = parseInt(studentIdStr, 10);
-    const status =
+    const status: AttStatus =
       code === 'came' ? 'came' : code === 'unexc' ? 'missed_unexcused' : 'missed_excused';
 
-    const student = await this.users.byId(studentId);
-    const lesson = await this.lessons.lessonById(lessonId);
-    if (!student || !lesson) {
+    let result;
+    try {
+      result = await this.lessonFlow.markAttendance(lessonId, studentId, status);
+    } catch {
       await ctx.answerCallbackQuery({ text: 'Topilmadi' });
       return;
     }
-
-    await this.lessons.setAttendance(lessonId, studentId, status);
-    const n = await this.lessons.lessonNumber(lesson);
-
-    let paymentNote = '';
-    if (status === 'came' || status === 'missed_unexcused') {
-      const newCharge = await this.payments.charge(lessonId, studentId, COURSE.LESSON_PRICE);
-      const pay = await this.payments.status(studentId);
-      paymentNote = `💳 ${fmtMoney(COURSE.LESSON_PRICE)} yechildi. Qoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`;
-      if (newCharge) {
-        const reason =
-          status === 'came'
-            ? `${n}-dars bo'lib o'tdi`
-            : `${n}-dars (kelmadi, oldindan ogohlantirilmagan)`;
-        await this.notifyParents(
-          ctx.api,
-          studentId,
-          `💳 ${student.name}: ${reason}.\n${fmtMoney(COURSE.LESSON_PRICE)} hisobdan yechildi.\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
-        );
-      }
-    } else {
-      const removed = await this.payments.uncharge(lessonId, studentId);
-      const pay = await this.payments.status(studentId);
-      paymentNote = `💳 To'lov yechilmadi. Qoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`;
-      await this.notifyParents(
-        ctx.api,
-        studentId,
-        `⚠️ ${student.name}: ${n}-darsga kela olmasligini oldindan ogohlantirgan.\nBu dars uchun to'lov yechilmadi.${removed ? " (Avvalgi yechilgan summa qaytarildi.)" : ''}\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
-      );
-    }
+    const { student, paymentNote } = result;
 
     await ctx.answerCallbackQuery({ text: ATT_LABELS[status] });
     await ctx

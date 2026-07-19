@@ -1,0 +1,60 @@
+import { Injectable } from '@nestjs/common';
+import { COURSE } from '../config';
+import { LessonsRepo } from '../repos/lessons.repo';
+import { PaymentsRepo } from '../repos/payments.repo';
+import { UsersRepo } from '../repos/users.repo';
+import { NotifyService } from './notify.service';
+import { fmtMoney } from '../bot/format';
+
+export type AttStatus = 'came' | 'missed_unexcused' | 'missed_excused';
+
+/**
+ * Davomat + to'lov mantig'i — bot va mini app ikkalasi ham shu servisdan foydalanadi.
+ * came / missed_unexcused → 100 000 yechiladi, missed_excused → yechilmaydi (yechilgan bo'lsa qaytariladi).
+ * Har o'zgarishda ota-onaga xabar ketadi.
+ */
+@Injectable()
+export class LessonFlowService {
+  constructor(
+    private readonly users: UsersRepo,
+    private readonly lessons: LessonsRepo,
+    private readonly payments: PaymentsRepo,
+    private readonly notify: NotifyService,
+  ) {}
+
+  async markAttendance(lessonId: number, studentId: number, status: AttStatus) {
+    const student = await this.users.byId(studentId);
+    const lesson = await this.lessons.lessonById(lessonId);
+    if (!student || !lesson) throw new Error('Topilmadi');
+
+    await this.lessons.setAttendance(lessonId, studentId, status);
+    const n = await this.lessons.lessonNumber(lesson);
+
+    let paymentNote: string;
+    if (status === 'came' || status === 'missed_unexcused') {
+      const newCharge = await this.payments.charge(lessonId, studentId, COURSE.LESSON_PRICE);
+      const pay = await this.payments.status(studentId);
+      paymentNote = `💳 ${fmtMoney(COURSE.LESSON_PRICE)} yechildi. Qoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`;
+      if (newCharge) {
+        const reason =
+          status === 'came'
+            ? `${n}-dars bo'lib o'tdi`
+            : `${n}-dars (kelmadi, oldindan ogohlantirilmagan)`;
+        await this.notify.notifyParents(
+          studentId,
+          `💳 ${student.name}: ${reason}.\n${fmtMoney(COURSE.LESSON_PRICE)} hisobdan yechildi.\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
+        );
+      }
+      return { student, n, paymentNote, pay };
+    }
+
+    const removed = await this.payments.uncharge(lessonId, studentId);
+    const pay = await this.payments.status(studentId);
+    paymentNote = `💳 To'lov yechilmadi. Qoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`;
+    await this.notify.notifyParents(
+      studentId,
+      `⚠️ ${student.name}: ${n}-darsga kela olmasligini oldindan ogohlantirgan.\nBu dars uchun to'lov yechilmadi.${removed ? ' (Avvalgi yechilgan summa qaytarildi.)' : ''}\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
+    );
+    return { student, n, paymentNote, pay };
+  }
+}

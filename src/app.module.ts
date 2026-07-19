@@ -16,6 +16,11 @@ import { StudentHandler } from './bot/handlers/student.handler';
 import { ParentHandler } from './bot/handlers/parent.handler';
 import { BotService } from './bot/bot.service';
 import { SchedulerService } from './scheduler/scheduler.service';
+import { NotifyService } from './services/notify.service';
+import { LessonFlowService } from './services/lesson-flow.service';
+import { TgAuthGuard, AdminGuard } from './webapp/auth.guard';
+import { AdminController } from './webapp/admin.controller';
+import { UserController } from './webapp/user.controller';
 
 @Module({
   imports: [
@@ -23,7 +28,7 @@ import { SchedulerService } from './scheduler/scheduler.service';
     ScheduleModule.forRoot(),
     DbModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, AdminController, UserController],
   providers: [
     UsersRepo,
     PaymentsRepo,
@@ -38,6 +43,10 @@ import { SchedulerService } from './scheduler/scheduler.service';
     ParentHandler,
     BotService,
     SchedulerService,
+    NotifyService,
+    LessonFlowService,
+    TgAuthGuard,
+    AdminGuard,
   ],
 })
 export class AppModule {}
