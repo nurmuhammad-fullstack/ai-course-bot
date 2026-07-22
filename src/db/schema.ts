@@ -17,6 +17,8 @@ export const users = pgTable('users', {
   phone: text('phone'),
   username: text('username'),
   role: text('role').notNull().default('pending'),
+  // oylik to'lov balansi: musbat = kredit (ortiqcha to'lagan), manfiy = qarz
+  balance: integer('balance').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -169,6 +171,14 @@ export const shopItems = pgTable('shop_items', {
 export const settings = pgTable('settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
+});
+
+// Bot admin/qo'shilgan qilib qo'shilgan guruhlar — my_chat_member orqali avtomatik to'ldiriladi
+export const groups = pgTable('groups', {
+  id: serial('id').primaryKey(),
+  chatId: text('chat_id').notNull().unique(),
+  title: text('title'),
+  addedAt: timestamp('added_at').notNull().defaultNow(),
 });
 
 // status: 'pending' | 'given' | 'rejected'

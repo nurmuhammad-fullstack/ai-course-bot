@@ -4,6 +4,7 @@ import { Api, Bot, Context } from 'grammy';
 import { LessonsRepo } from '../repos/lessons.repo';
 import { SettingsRepo } from '../repos/settings.repo';
 import { UsersRepo } from '../repos/users.repo';
+import { GroupsRepo } from '../repos/groups.repo';
 import { RegistrationHandler } from './handlers/registration.handler';
 import { AdminHandler } from './handlers/admin.handler';
 import { StudentHandler } from './handlers/student.handler';
@@ -23,6 +24,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly users: UsersRepo,
     private readonly lessons: LessonsRepo,
     private readonly settings: SettingsRepo,
+    private readonly groups: GroupsRepo,
     private readonly registration: RegistrationHandler,
     private readonly admin: AdminHandler,
     private readonly student: StudentHandler,
@@ -46,6 +48,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     this.bot.on('callback_query:data', (ctx) => this.routeCallback(ctx));
     this.bot.on('message', (ctx) => this.routeMessage(ctx));
+    this.bot.on('my_chat_member', (ctx) => this.routeMyChatMember(ctx));
     this.bot.catch((err) => this.logger.error(`Bot xatosi: ${err.message}`, err.stack));
 
     this.startPolling();
@@ -72,19 +75,35 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return String(ctx.from?.id) === this.adminChatId;
   }
 
+  /** Bot guruhga qo'shilganda/chiqarilganda — avtomatik ro'yxatga olish */
+  private async routeMyChatMember(ctx: Context) {
+    try {
+      const chat = ctx.myChatMember?.chat;
+      if (!chat || (chat.type !== 'group' && chat.type !== 'supergroup')) return;
+
+      const newStatus = ctx.myChatMember!.new_chat_member.status;
+      if (newStatus === 'member' || newStatus === 'administrator') {
+        await this.groups.upsert(String(chat.id), chat.title ?? null);
+        await this.settings.set('group_chat_id', String(chat.id));
+        await this.notifyAdminSafe(
+          `✅ Bot yangi guruhga qo'shildi: "${chat.title ?? ''}"\nEndi shu guruhga ham e'lonlar post qilinadi.`,
+        );
+      } else if (newStatus === 'left' || newStatus === 'kicked') {
+        await this.groups.remove(String(chat.id));
+        await this.notifyAdminSafe(`ℹ️ Bot "${chat.title ?? ''}" guruhidan chiqarildi. Ro'yxatdan o'chirildi.`);
+      }
+    } catch (err) {
+      this.logger.error('routeMyChatMember xatosi', err as Error);
+    }
+  }
+
+  private async notifyAdminSafe(text: string) {
+    await this.bot.api.sendMessage(this.adminChatId, text).catch(() => undefined);
+  }
+
   private async routeMessage(ctx: Context) {
     try {
-      // Guruh: admin «/guruh» yozsa — e'lonlar guruhi sifatida saqlaymiz
-      if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') {
-        const text = ctx.message?.text ?? '';
-        if (this.isAdmin(ctx) && /^\/guruh(@\w+)?$/.test(text.trim())) {
-          await this.settings.set('group_chat_id', String(ctx.chat.id));
-          await ctx.reply(
-            `✅ Bu guruh («${ctx.chat.title ?? ''}») e'lonlar guruhi sifatida saqlandi.\nUyga vazifalar shu yerga yuboriladi.`,
-          );
-        }
-        return;
-      }
+      if (ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') return;
       if (ctx.chat?.type !== 'private') return;
 
       if (this.isAdmin(ctx)) {

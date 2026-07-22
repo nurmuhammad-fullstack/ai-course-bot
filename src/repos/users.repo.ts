@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, notInArray } from 'drizzle-orm';
+import { and, eq, ilike, notInArray, sql } from 'drizzle-orm';
 import { DRIZZLE, Db } from '../db/db.module';
 import { parentLinks, users } from '../db/schema';
 
@@ -81,5 +81,24 @@ export class UsersRepo {
       .innerJoin(users, eq(parentLinks.studentId, users.id))
       .where(eq(parentLinks.parentId, parentId));
     return rows.map((r) => r.user);
+  }
+
+  /** Gemini AI orqali erkin yozilgan ismdan o'quvchini topish uchun (aniq bo'lmasa ham qidiradi) */
+  async findStudentByName(name: string): Promise<User | undefined> {
+    const rows = await this.db
+      .select()
+      .from(users)
+      .where(and(eq(users.role, 'student'), ilike(users.name, `%${name}%`)));
+    return rows[0];
+  }
+
+  /** balansga summani qo'shadi (musbat = to'lov/kredit, manfiy = qarz/oylik yechim) va yangi balansni qaytaradi */
+  async adjustBalance(id: number, amount: number): Promise<number> {
+    const rows = await this.db
+      .update(users)
+      .set({ balance: sql`${users.balance} + ${amount}` })
+      .where(eq(users.id, id))
+      .returning({ balance: users.balance });
+    return rows[0].balance;
   }
 }

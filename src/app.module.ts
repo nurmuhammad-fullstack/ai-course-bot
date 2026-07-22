@@ -10,7 +10,10 @@ import { LessonsRepo } from './repos/lessons.repo';
 import { TasksRepo } from './repos/tasks.repo';
 import { ShopRepo } from './repos/shop.repo';
 import { SettingsRepo } from './repos/settings.repo';
+import { GroupsRepo } from './repos/groups.repo';
 import { StateStore } from './bot/state';
+import { GeminiService } from './ai/gemini.service';
+import { AiAgentService } from './ai/ai-agent.service';
 import { RegistrationHandler } from './bot/handlers/registration.handler';
 import { AdminHandler } from './bot/handlers/admin.handler';
 import { StudentHandler } from './bot/handlers/student.handler';
@@ -38,7 +41,10 @@ import { UserController } from './webapp/user.controller';
     TasksRepo,
     ShopRepo,
     SettingsRepo,
+    GroupsRepo,
     StateStore,
+    GeminiService,
+    AiAgentService,
     RegistrationHandler,
     AdminHandler,
     StudentHandler,
