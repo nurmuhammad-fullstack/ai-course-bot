@@ -10,7 +10,7 @@ import { AdminHandler } from './handlers/admin.handler';
 import { StudentHandler } from './handlers/student.handler';
 import { ParentHandler } from './handlers/parent.handler';
 
-const ADMIN_CALLBACKS = /^(reg|att|lessonend|sched|taskadm|sub|shopadm|order|daytime|hw|payd):/;
+const ADMIN_CALLBACKS = /^(reg|att|lessonend|sched|taskadm|sub|shopadm|order|daytime|hw|payd|stu):/;
 const STUDENT_CALLBACKS = /^(task|quiz|shop):/;
 
 @Injectable()

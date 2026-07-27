@@ -205,6 +205,24 @@ export class AdminController {
     return result;
   }
 
+  @Post('students/:id/delete')
+  async deleteStudent(@Param('id', ParseIntPipe) id: number) {
+    const student = await this.users.byId(id);
+    if (!student || student.role !== 'student') {
+      throw new NotFoundException("O'quvchi topilmadi");
+    }
+    const parents = await this.users.parentsOfStudent(id);
+    await this.users.remove(id);
+    await this.notify.toAdmin(`🗑 ${student.name} o'quvchilar ro'yxatidan o'chirildi.`);
+    for (const parent of parents) {
+      await this.notify.send(
+        parent.telegramId,
+        `ℹ️ ${student.name} kursdan chiqarildi. Sizga oid ma'lumotlar botdan o'chirildi.`,
+      );
+    }
+    return { ok: true };
+  }
+
   // ── To'lov sanasi ───────────────────────────────────────────────────────────
   @Put('payments/:studentId')
   async setDueDate(

@@ -357,13 +357,62 @@ export class AdminHandler {
       await ctx.reply("📭 Hali o'quvchilar yo'q.");
       return;
     }
-    let msg = "👨‍🎓 O'quvchilar:\n";
-    for (const [i, s] of students.entries()) {
+    for (const s of students) {
       const balance = await this.coins.balance(s.id);
       const pay = await this.payments.status(s.id);
-      msg += `\n${i + 1}. ${s.name} — 💰 ${balance} coin | 💳 qoldiq ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`;
+      await ctx.reply(
+        `👤 ${s.name}\n💰 ${balance} coin | 💳 qoldiq ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`,
+        { reply_markup: new InlineKeyboard().text("🗑 O'chirish", `stu:del:${s.id}`) },
+      );
     }
-    await ctx.reply(msg);
+  }
+
+  private async handleDeleteStudent(ctx: Context, data: string) {
+    const studentId = parseInt(data.split(':')[2], 10);
+
+    if (data.startsWith('stu:del:')) {
+      const student = await this.users.byId(studentId);
+      if (!student) {
+        await ctx.answerCallbackQuery({ text: 'Topilmadi' });
+        return;
+      }
+      await ctx.answerCallbackQuery();
+      await ctx.editMessageReplyMarkup({
+        reply_markup: new InlineKeyboard()
+          .text("⚠️ Ha, o'chirish", `stu:delconfirm:${studentId}`)
+          .text('❌ Bekor', `stu:delcancel:${studentId}`),
+      }).catch(() => undefined);
+      return;
+    }
+
+    if (data.startsWith('stu:delcancel:')) {
+      await ctx.answerCallbackQuery({ text: 'Bekor qilindi' });
+      await ctx.editMessageReplyMarkup({
+        reply_markup: new InlineKeyboard().text("🗑 O'chirish", `stu:del:${studentId}`),
+      }).catch(() => undefined);
+      return;
+    }
+
+    if (data.startsWith('stu:delconfirm:')) {
+      const student = await this.users.byId(studentId);
+      if (!student) {
+        await ctx.answerCallbackQuery({ text: 'Topilmadi' });
+        return;
+      }
+      const parents = await this.users.parentsOfStudent(studentId);
+      await this.users.remove(studentId);
+      await ctx.answerCallbackQuery({ text: "O'chirildi" });
+      await ctx.editMessageText(`🗑 ${student.name} o'quvchilar ro'yxatidan o'chirildi.`).catch(() => undefined);
+      for (const parent of parents) {
+        await ctx.api
+          .sendMessage(
+            parent.telegramId,
+            `ℹ️ ${student.name} kursdan chiqarildi. Sizga oid ma'lumotlar botdan o'chirildi.`,
+          )
+          .catch(() => undefined);
+      }
+      return;
+    }
   }
 
   private async showSchedule(ctx: Context) {
@@ -464,6 +513,10 @@ export class AdminHandler {
   // ── Callbacklar ─────────────────────────────────────────────────────────────
   async handleCallback(ctx: Context, data: string): Promise<void> {
     const chatId = String(ctx.chat!.id);
+
+    if (data.startsWith('stu:')) {
+      return this.handleDeleteStudent(ctx, data);
+    }
 
     if (data === 'lessonend:start') {
       if (!(await this.lessons.scheduleForDay(todayDayOfWeek()))) {

@@ -651,6 +651,8 @@ function openStudentSheet(st) {
         '</div>' +
         '<div data-role="due-msg"></div>' +
       '</div>' +
+      '<button type="button" class="btn btn-red btn-block" style="margin-top:16px" data-act="delete">' + icon('x', 16) + 'O’quvchini o’chirish</button>' +
+      '<div data-role="del-msg"></div>' +
     '</div>'
   );
   const close = openSheet(content);
@@ -663,6 +665,24 @@ function openStudentSheet(st) {
       .catch((err) => {
         btn.disabled = false;
         const box = content.querySelector('[data-role="due-msg"]');
+        clear(box);
+        box.appendChild(el('<div class="err-msg">' + esc(err.message) + '</div>'));
+      });
+  });
+  content.querySelector('[data-act="delete"]').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const box = content.querySelector('[data-role="del-msg"]');
+    if (btn.dataset.confirm !== '1') {
+      btn.dataset.confirm = '1';
+      btn.textContent = '';
+      btn.appendChild(el('<span>' + icon('alert', 16) + 'Ishonchingiz komilmi? Yana bosing</span>'));
+      return;
+    }
+    btn.disabled = true;
+    api('/api/admin/students/' + st.id + '/delete', { method: 'POST' })
+      .then(() => { close(); renderAdminStudents(); })
+      .catch((err) => {
+        btn.disabled = false;
         clear(box);
         box.appendChild(el('<div class="err-msg">' + esc(err.message) + '</div>'));
       });
