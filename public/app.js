@@ -673,11 +673,17 @@ function renderAdminStudents() {
     students.forEach((st) => {
       const pay = st.pay || {};
       const att = st.attendance || {};
+      const parentNames = st.parentNames || [];
       const card = el(
         '<button type="button" class="cat-card">' +
           '<div class="cc-icon">' + icon('users', 22) + '</div>' +
           '<div class="cc-body">' +
-            '<div class="cc-title">' + esc(st.name) + '</div>' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+              '<div class="cc-title">' + esc(st.name) + '</div>' +
+              (parentNames.length
+                ? '<span class="status-chip green" title="Ota-ona ulangan">' + icon('users', 12) + esc(parentNames.join(', ')) + '</span>'
+                : '<span class="status-chip gray">' + icon('alert', 12) + 'Ota-ona ulanmagan</span>') +
+            '</div>' +
             '<div class="cc-sub">' +
               '<span class="strong">' + fmtMoney(pay.remaining || 0) + '</span>' +
               '<span>· ' + (pay.lessonsLeft != null ? pay.lessonsLeft : '?') + ' dars</span>' +

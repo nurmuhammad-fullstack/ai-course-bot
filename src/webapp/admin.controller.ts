@@ -196,6 +196,7 @@ export class AdminController {
         name: s.name,
         phone: s.phone,
         hasParent: parents.length > 0,
+        parentNames: parents.map((p) => p.name).filter(Boolean),
         coins,
         pay,
         attendance: {
