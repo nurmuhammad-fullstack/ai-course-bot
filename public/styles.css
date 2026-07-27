@@ -180,6 +180,10 @@ svg { display: block; flex-shrink: 0; }
 }
 .day-chip.active .dc-dot { background: #fff; }
 .day-chip .dc-dot.hidden { visibility: hidden; }
+.day-chip .dc-dot.came { background: var(--primary); width: 7px; height: 7px; }
+.day-chip .dc-dot.missed { background: var(--red); width: 7px; height: 7px; }
+.day-chip.active .dc-dot.came,
+.day-chip.active .dc-dot.missed { background: #fff; }
 
 /* ===== Category card (list rows) ===== */
 

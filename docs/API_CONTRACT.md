@@ -80,7 +80,8 @@ approve → coin qo'shiladi + o'quvchiga xabar. → `{ "ok": true }`
 { "name": "...", "coins": 30,
   "history": [ { "amount": 10, "reason": "...", "createdAt": "..." } ],
   "pay": { ...GET /api/admin/students dagi pay bilan bir xil... },
-  "attendance": [ { "lessonDate": "2026-07-14", "status": "came" } ] }
+  "attendance": [ { "lessonDate": "2026-07-14", "status": "came" } ],
+  "schedule": [ { "dayOfWeek": 1, "lessonTime": "18:00" }, ... ] }
 ```
 
 ### GET /api/tasks
@@ -106,7 +107,8 @@ Matnli topshiriq. Adminga Telegram push ham ketadi. → `{ "ok": true }`
 
 ### GET /api/parent
 ```json
-{ "children": [ { "name": "Ali", "pay": { ... }, "attendance": [ { "lessonDate", "status" } ] } ] }
+{ "children": [ { "name": "Ali", "pay": { ... }, "attendance": [ { "lessonDate", "status" } ] } ],
+  "schedule": [ { "dayOfWeek": 1, "lessonTime": "18:00" }, ... ] }
 ```
 
 ## Mavjud kod (o'zgartirmasdan foydalanish)

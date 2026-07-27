@@ -16,6 +16,36 @@ const DAY_ABBR = ['Ya', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh']; // 0 = Yakshanba
 const DAY_FULL = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
 const MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentyabr', 'oktyabr', 'noyabr', 'dekabr'];
 
+/* Joriy hafta (Dushanbadan boshlab) uchun dars kunlari chip-qatorini quradi.
+   attendanceByDate — { 'YYYY-MM-DD': 'came'|'missed_unexcused'|'missed_excused' } (ixtiyoriy, kelmagan/kelgan kunni belgilash uchun) */
+function renderDayChips(schedule, attendanceByDate) {
+  const now = new Date();
+  const chips = el('<div class="day-chips"></div>');
+  const scheduleMap = {};
+  (schedule || []).forEach((sc) => { scheduleMap[sc.dayOfWeek] = sc.lessonTime; });
+  const order = [1, 2, 3, 4, 5, 6, 0]; // Du..Ya
+  const mondayOffset = (now.getDay() + 6) % 7;
+  const monday = new Date(now); monday.setDate(now.getDate() - mondayOffset);
+
+  order.forEach((dow) => {
+    const idx = order.indexOf(dow);
+    const dd = new Date(monday); dd.setDate(monday.getDate() + idx);
+    const isToday = dow === now.getDay();
+    const hasLesson = scheduleMap[dow] != null;
+    const iso = dd.toISOString().slice(0, 10);
+    const attStatus = attendanceByDate ? attendanceByDate[iso] : null;
+    const dotCls = attStatus === 'came' ? ' came' : attStatus && attStatus !== 'came' ? ' missed' : '';
+    chips.appendChild(el(
+      '<button type="button" class="day-chip' + (isToday ? ' active' : '') + '" aria-label="' + esc(DAY_FULL[dow]) + '">' +
+        '<div class="dc-num">' + dd.getDate() + '</div>' +
+        '<div class="dc-name">' + DAY_ABBR[dow] + '</div>' +
+        '<div class="dc-dot' + (hasLesson ? '' : ' hidden') + dotCls + '"></div>' +
+      '</button>'
+    ));
+  });
+  return chips;
+}
+
 function fmtMoney(n) {
   const num = Math.round(Number(n) || 0);
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + " so'm";
@@ -1072,6 +1102,12 @@ function renderStudentHome() {
       '</section>'
     ));
 
+    /* Dars jadvali (shu hafta) */
+    s.appendChild(el('<h2 class="section-title">Dars jadvali</h2>'));
+    const attByDate = {};
+    (me.attendance || []).forEach((a) => { attByDate[a.lessonDate] = a.status; });
+    s.appendChild(renderDayChips(me.schedule, attByDate));
+
     /* Coin tarixi (timeline) */
     s.appendChild(el('<h2 class="section-title">Coin tarixi</h2>'));
     const history = me.history || [];
@@ -1396,8 +1432,12 @@ function renderParent() {
         grid.appendChild(el('<div class="pay-cell' + (i < paid ? ' paid' : '') + '"></div>'));
       }
 
-      const list = card.querySelector('.detail-list');
       const att = ch.attendance || [];
+      const attByDate = {};
+      att.forEach((a) => { attByDate[a.lessonDate] = a.status; });
+      card.insertBefore(renderDayChips(data.schedule, attByDate), card.querySelector('.detail-list'));
+
+      const list = card.querySelector('.detail-list');
       if (!att.length) {
         list.appendChild(el('<div class="detail-row"><span class="dr-label">Davomat hali yo’q</span></div>'));
       }
