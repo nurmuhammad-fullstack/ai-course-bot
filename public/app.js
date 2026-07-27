@@ -490,7 +490,7 @@ function renderPaymentsView() {
               '<span>· ' + (pay.chargedCount || 0) + '/' + (pay.lessonsCount || 12) + ' dars o’tildi</span>' +
             '</div>' +
             '<div class="cc-sub" style="margin-top:2px">' + icon('calendar', 13) + ' ' +
-              (pay.dueDate ? 'Keyingi to’lov: ' + fmtDate(pay.dueDate) : 'Sana belgilanmagan') +
+              (pay.dueDay ? 'Har oyning ' + pay.dueDay + '-kuni' : 'Kun belgilanmagan') +
             '</div>' +
           '</div>' +
           '<div class="cc-right">' + icon('chevron', 20) + '</div>' +
@@ -514,12 +514,17 @@ function openDueDateSheet(st) {
         '<div class="detail-row"><span class="dr-label">' + icon('coins', 15) + 'Qoldiq</span><span class="dr-value">' + fmtMoney(pay.remaining || 0) + ' · ' + (pay.lessonsLeft != null ? pay.lessonsLeft : '?') + ' dars</span></div>' +
       '</div>' +
       '<div class="field" style="margin-top:14px">' +
-        '<label for="pay-due-input">To’lov sanasi (3 kun oldin va o’sha kuni ota-onaga eslatma boradi)</label>' +
-        '<input id="pay-due-input" type="date" value="' + (pay.dueDate || '') + '" />' +
+        '<label for="pay-due-input">' + icon('calendar', 14) + ' Har oyning to’lov kuni (3 kun oldin va o’sha kuni ota-onaga eslatma boradi)</label>' +
+        '<select id="pay-due-input">' +
+          '<option value="">— tanlang —</option>' +
+          Array.from({ length: 31 }, (_, i) => i + 1).map((d) =>
+            '<option value="' + d + '"' + (pay.dueDay === d ? ' selected' : '') + '>' + d + '-kuni</option>'
+          ).join('') +
+        '</select>' +
       '</div>' +
       '<div class="btn-row">' +
         '<button type="button" class="btn btn-primary btn-sm" data-act="save">Saqlash</button>' +
-        '<button type="button" class="btn btn-red btn-sm" data-act="clear">Sanani o’chirish</button>' +
+        '<button type="button" class="btn btn-red btn-sm" data-act="clear">Kunni o’chirish</button>' +
       '</div>' +
       '<div data-role="msg"></div>' +
     '</div>'
@@ -527,7 +532,7 @@ function openDueDateSheet(st) {
   const close = openSheet(content);
   const save = (val, btn) => {
     setBusy(btn, true);
-    api('/api/admin/payments/' + st.id, { method: 'PUT', body: { dueDate: val } })
+    api('/api/admin/payments/' + st.id, { method: 'PUT', body: { dueDay: val } })
       .then(() => { close(); renderPaymentsView(); })
       .catch((err) => {
         setBusy(btn, false);
@@ -537,7 +542,8 @@ function openDueDateSheet(st) {
       });
   };
   content.querySelector('[data-act="save"]').addEventListener('click', (e) => {
-    save(content.querySelector('#pay-due-input').value || null, e.currentTarget);
+    const raw = content.querySelector('#pay-due-input').value;
+    save(raw ? parseInt(raw, 10) : null, e.currentTarget);
   });
   content.querySelector('[data-act="clear"]').addEventListener('click', (e) => {
     save(null, e.currentTarget);
@@ -704,12 +710,17 @@ function openStudentSheet(st) {
         '<div class="detail-row"><span class="dr-label">' + icon('clipboard', 15) + 'Hisoblangan</span><span class="dr-value">' + fmtMoney(pay.charged || 0) + ' (' + (pay.chargedCount || 0) + ' dars)</span></div>' +
         '<div class="detail-row"><span class="dr-label">' + icon('coins', 15) + 'Qoldiq</span><span class="dr-value">' + fmtMoney(pay.remaining || 0) + ' · ' + (pay.lessonsLeft != null ? pay.lessonsLeft : '?') + ' dars</span></div>' +
         '<div class="detail-row"><span class="dr-label">' + icon('calendar', 15) + 'Kurs jami</span><span class="dr-value">' + fmtMoney(pay.total || 0) + ' · ' + (pay.lessonsCount || 0) + ' dars</span></div>' +
-        '<div class="detail-row"><span class="dr-label">' + icon('calendar', 15) + 'To’lov sanasi</span><span class="dr-value">' + (pay.dueDate ? fmtDate(pay.dueDate) : 'belgilanmagan') + '</span></div>' +
+        '<div class="detail-row"><span class="dr-label">' + icon('calendar', 15) + 'To’lov kuni</span><span class="dr-value">' + (pay.dueDay ? 'har oyning ' + pay.dueDay + '-kuni' : 'belgilanmagan') + '</span></div>' +
       '</div>' +
       '<div class="field" style="margin-top:14px">' +
-        '<label style="font-size:13px;color:var(--text-2);display:block;margin-bottom:6px" for="due-date-input">To’lov sanasini o’zgartirish (3 kun oldin eslatma boradi)</label>' +
+        '<label style="font-size:13px;color:var(--text-2);display:block;margin-bottom:6px" for="due-date-input">' + icon('calendar', 14) + ' Har oyning to’lov kuni (3 kun oldin eslatma boradi)</label>' +
         '<div style="display:flex;gap:8px">' +
-          '<input id="due-date-input" type="date" style="flex:1" value="' + (pay.dueDate || '') + '" />' +
+          '<select id="due-date-input" style="flex:1">' +
+            '<option value="">— tanlang —</option>' +
+            Array.from({ length: 31 }, (_, i) => i + 1).map((d) =>
+              '<option value="' + d + '"' + (pay.dueDay === d ? ' selected' : '') + '>' + d + '-kuni</option>'
+            ).join('') +
+          '</select>' +
           '<button type="button" class="btn btn-primary btn-sm" data-act="save-due">Saqlash</button>' +
         '</div>' +
         '<div data-role="due-msg"></div>' +
@@ -789,9 +800,10 @@ function openStudentSheet(st) {
 
   content.querySelector('[data-act="save-due"]').addEventListener('click', (e) => {
     const btn = e.currentTarget;
-    const val = content.querySelector('#due-date-input').value || null;
+    const raw = content.querySelector('#due-date-input').value;
+    const val = raw ? parseInt(raw, 10) : null;
     btn.disabled = true;
-    api('/api/admin/payments/' + st.id, { method: 'PUT', body: { dueDate: val } })
+    api('/api/admin/payments/' + st.id, { method: 'PUT', body: { dueDay: val } })
       .then(() => { close(); renderAdminStudents(); })
       .catch((err) => {
         btn.disabled = false;
@@ -1572,7 +1584,7 @@ function renderParent() {
             '<h3 style="margin:0">' + esc(ch.name) + '</h3>' +
             '<span class="status-chip green">' + icon('coins', 14) + (ch.coins != null ? ch.coins : 0) + ' coin</span>' +
           '</div>' +
-          '<div class="cc-sub" style="font-size:13px;color:var(--text-2)">To’langan: ' + paid + '/' + total + ' dars' + (pay.dueDate ? ' · Keyingi to’lov: ' + fmtDate(pay.dueDate) : '') + '</div>' +
+          '<div class="cc-sub" style="font-size:13px;color:var(--text-2)">To’langan: ' + paid + '/' + total + ' dars' + (pay.dueDay ? ' · To’lov kuni: har oyning ' + pay.dueDay + '-kuni' : '') + '</div>' +
           '<div class="pay-grid"></div>' +
           '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">' +
             '<span style="font-size:22px;font-weight:700">' + fmtMoney(pay.remaining || 0) + '</span>' +

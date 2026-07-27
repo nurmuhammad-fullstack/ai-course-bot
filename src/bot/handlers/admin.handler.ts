@@ -12,9 +12,7 @@ import { BTN, adminMenu, cancelKeyboard, doneCancelKeyboard } from '../keyboards
 import {
   ATT_LABELS,
   DAY_NAMES,
-  fmtDateUz,
   fmtMoney,
-  parseDateInput,
   parseTime,
   todayDate,
   todayDayOfWeek,
@@ -107,11 +105,11 @@ export class AdminHandler {
     let msg = "💳 To'lovlar:\n";
     for (const s of students) {
       const pay = await this.payments.status(s.id);
-      const due = pay.dueDate ? `📅 ${fmtDateUz(pay.dueDate)}` : '📅 sana belgilanmagan';
+      const due = pay.dueDay ? `📅 har oyning ${pay.dueDay}-kuni` : '📅 kun belgilanmagan';
       msg += `\n👤 ${s.name}\n   O'tildi: ${pay.chargedCount} ta dars | Qoldiq: ${fmtMoney(pay.remaining)}\n   ${due}\n`;
       kb.text(`📅 ${s.name}`, `payd:${s.id}`).row();
     }
-    msg += "\nTo'lov sanasini belgilash uchun o'quvchini tanlang.\nBot ota-onaga 3 kun oldin va o'sha kuni eslatadi.";
+    msg += "\nTo'lov kunini belgilash uchun o'quvchini tanlang.\nBot ota-onaga 3 kun oldin va o'sha kuni eslatadi.";
     await ctx.reply(msg, { reply_markup: kb });
   }
 
@@ -152,7 +150,7 @@ export class AdminHandler {
       return;
     }
 
-    // To'lov sanasini belgilash
+    // To'lov kunini belgilash (har oyning N-kuni)
     if (st.step === 'pay_due' && text) {
       const student = await this.users.byId(st.studentId);
       if (!student) {
@@ -161,20 +159,20 @@ export class AdminHandler {
         return;
       }
       if (text === '-') {
-        await this.payments.setDueDate(st.studentId, null);
+        await this.payments.setDueDay(st.studentId, null);
         this.state.clear(chatId);
-        await ctx.reply(`✅ ${student.name} uchun to'lov sanasi o'chirildi.`, { reply_markup: adminMenu() });
+        await ctx.reply(`✅ ${student.name} uchun to'lov kuni o'chirildi.`, { reply_markup: adminMenu() });
         return;
       }
-      const iso = parseDateInput(text);
-      if (!iso) {
-        await ctx.reply("❌ Sana formatini tushunmadim. Masalan: 25.08 yoki 25.08.2026");
+      const day = parseInt(text, 10);
+      if (!Number.isInteger(day) || day < 1 || day > 31) {
+        await ctx.reply("❌ 1 dan 31 gacha kun raqamini kiriting (masalan: 5). Bekor qilish uchun «-» yozing.");
         return;
       }
-      await this.payments.setDueDate(st.studentId, iso);
+      await this.payments.setDueDay(st.studentId, day);
       this.state.clear(chatId);
       await ctx.reply(
-        `✅ ${student.name} uchun to'lov sanasi: ${fmtDateUz(iso)}.\nOta-onaga 3 kun oldin va o'sha kuni eslatma boradi.`,
+        `✅ ${student.name} uchun to'lov kuni: har oyning ${day}-kuni.\nOta-onaga 3 kun oldin va o'sha kuni eslatma boradi.`,
         { reply_markup: adminMenu() },
       );
       return;
@@ -570,7 +568,7 @@ export class AdminHandler {
       this.state.set(chatId, { step: 'pay_due', studentId });
       await ctx.answerCallbackQuery();
       await ctx.reply(
-        `📅 ${student.name} uchun to'lov sanasini kiriting:\n\nFormat: 25.08 yoki 25.08.2026\nSanani o'chirish uchun «-» yuboring.`,
+        `📅 ${student.name} uchun har oyning to'lov kunini kiriting (1-31 oralig'ida raqam):\n\nMasalan: 5\nKunni o'chirish uchun «-» yuboring.`,
         { reply_markup: cancelKeyboard() },
       );
       return;

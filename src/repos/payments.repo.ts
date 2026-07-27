@@ -11,7 +11,7 @@ export interface PaymentStatus {
   chargedCount: number;
   remaining: number;
   lessonsLeft: number;
-  dueDate: string | null;
+  dueDay: number | null;
 }
 
 @Injectable()
@@ -44,21 +44,21 @@ export class PaymentsRepo {
       chargedCount,
       remaining: pay.total - charged,
       lessonsLeft: pay.lessonsCount - chargedCount,
-      dueDate: pay.dueDate ?? null,
+      dueDay: pay.dueDay ?? null,
     };
   }
 
-  async setDueDate(studentId: number, dueDate: string | null) {
+  async setDueDay(studentId: number, dueDay: number | null) {
     await this.ensure(studentId);
-    await this.db.update(payments).set({ dueDate }).where(eq(payments.studentId, studentId));
+    await this.db.update(payments).set({ dueDay }).where(eq(payments.studentId, studentId));
   }
 
-  /** To'lov sanasi belgilangan barcha yozuvlar */
-  async withDueDates() {
+  /** To'lov kuni belgilangan barcha yozuvlar */
+  async withDueDays() {
     return this.db
       .select()
       .from(payments)
-      .where(sql`${payments.dueDate} is not null`);
+      .where(sql`${payments.dueDay} is not null`);
   }
 
   /** true qaytarsa — yangi yechildi; false — bu dars uchun oldin yechilgan */

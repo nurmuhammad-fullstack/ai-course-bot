@@ -267,23 +267,24 @@ export class AdminController {
     return { ok: true };
   }
 
-  // ── To'lov sanasi ───────────────────────────────────────────────────────────
+  // ── To'lov kuni (har oyning N-kuni) ──────────────────────────────────────────
   @Put('payments/:studentId')
-  async setDueDate(
+  async setDueDay(
     @Param('studentId', ParseIntPipe) studentId: number,
-    @Body() body: { dueDate?: string | null },
+    @Body() body: { dueDay?: number | null },
   ) {
     const student = await this.users.byId(studentId);
     if (!student || student.role !== 'student') throw new NotFoundException("O'quvchi topilmadi");
-    const raw = body.dueDate ?? null;
-    if (raw === null || raw === '') {
-      await this.payments.setDueDate(studentId, null);
+    const raw = body.dueDay ?? null;
+    if (raw === null) {
+      await this.payments.setDueDay(studentId, null);
       return { ok: true };
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-      throw new BadRequestException("Sana formati noto'g'ri (YYYY-MM-DD)");
+    const day = Number(raw);
+    if (!Number.isInteger(day) || day < 1 || day > 31) {
+      throw new BadRequestException("Kun 1 dan 31 gacha bo'lishi kerak");
     }
-    await this.payments.setDueDate(studentId, raw);
+    await this.payments.setDueDay(studentId, day);
     return { ok: true };
   }
 

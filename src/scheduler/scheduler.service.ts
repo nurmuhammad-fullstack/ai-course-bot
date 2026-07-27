@@ -8,10 +8,8 @@ import {
   TZ_OFFSET_HOURS,
 } from '../config';
 import {
-  addDays,
   addMinutes,
   DAY_NAMES,
-  fmtDateUz,
   fmtMoney,
   nowHM,
   parseTime,
@@ -42,23 +40,32 @@ export class SchedulerService {
     private readonly users: UsersRepo,
   ) {}
 
-  /** Har kuni 10:00 (Toshkent): to'lov sanasi eslatmalari — 3 kun oldin va o'sha kuni */
+  /** Berilgan sanadan N kun keyingi kun-raqamini beradi (oy oxiridan oshib ketmaydi) */
+  private dayOfDate(iso: string, offsetDays: number): number {
+    const dt = new Date(iso + 'T00:00:00Z');
+    dt.setUTCDate(dt.getUTCDate() + offsetDays);
+    return dt.getUTCDate();
+  }
+
+  /** Har kuni 10:00 (Toshkent): to'lov kuni eslatmalari — 3 kun oldin va o'sha kuni (har oy takrorlanadi) */
   @Cron(`0 ${10 - TZ_OFFSET_HOURS} * * *`, { utcOffset: 0 })
   async paymentReminders() {
     const today = todayDate();
-    const rows = await this.payments.withDueDates();
+    const todayDayNum = this.dayOfDate(today, 0);
+    const in3DaysNum = this.dayOfDate(today, 3);
+    const rows = await this.payments.withDueDays();
     for (const p of rows) {
-      const isDueToday = p.dueDate === today;
-      const isThreeDaysBefore = p.dueDate === addDays(today, 3);
+      const isDueToday = p.dueDay === todayDayNum;
+      const isThreeDaysBefore = p.dueDay === in3DaysNum;
       if (!isDueToday && !isThreeDaysBefore) continue;
 
       const student = await this.users.byId(p.studentId);
       if (!student) continue;
       const pay = await this.payments.status(p.studentId);
-      const when = isDueToday ? 'BUGUN' : `3 kundan keyin (${fmtDateUz(p.dueDate!)})`;
+      const when = isDueToday ? 'BUGUN' : `3 kundan keyin (har oyning ${p.dueDay}-kuni)`;
       const text =
         `💳 To'lov eslatmasi!\n\n` +
-        `${student.name} uchun to'lov sanasi ${when}.\n\n` +
+        `${student.name} uchun to'lov kuni ${when}.\n\n` +
         `📊 Holat: ${pay.chargedCount} ta dars o'tildi, hisobingizda ${fmtMoney(pay.remaining)} qoldi (${pay.lessonsLeft} ta dars).`;
 
       const parents = await this.users.parentsOfStudent(p.studentId);

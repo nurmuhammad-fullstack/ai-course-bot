@@ -72,7 +72,7 @@ export const payments = pgTable('payments', {
     .references(() => users.id, { onDelete: 'cascade' }),
   total: integer('total').notNull(),
   lessonsCount: integer('lessons_count').notNull(),
-  dueDate: date('due_date'), // keyingi to'lov sanasi (eslatma uchun)
+  dueDay: integer('due_day'), // har oyning to'lov kuni (1-31), eslatma uchun
 });
 
 export const paymentCharges = pgTable(
