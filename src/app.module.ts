@@ -12,8 +12,6 @@ import { ShopRepo } from './repos/shop.repo';
 import { SettingsRepo } from './repos/settings.repo';
 import { GroupsRepo } from './repos/groups.repo';
 import { StateStore } from './bot/state';
-import { GeminiService } from './ai/gemini.service';
-import { AiAgentService } from './ai/ai-agent.service';
 import { RegistrationHandler } from './bot/handlers/registration.handler';
 import { AdminHandler } from './bot/handlers/admin.handler';
 import { StudentHandler } from './bot/handlers/student.handler';
@@ -43,8 +41,6 @@ import { UserController } from './webapp/user.controller';
     SettingsRepo,
     GroupsRepo,
     StateStore,
-    GeminiService,
-    AiAgentService,
     RegistrationHandler,
     AdminHandler,
     StudentHandler,

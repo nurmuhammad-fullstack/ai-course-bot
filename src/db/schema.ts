@@ -17,8 +17,6 @@ export const users = pgTable('users', {
   phone: text('phone'),
   username: text('username'),
   role: text('role').notNull().default('pending'),
-  // oylik to'lov balansi: musbat = kredit (ortiqcha to'lagan), manfiy = qarz
-  balance: integer('balance').notNull().default(0),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

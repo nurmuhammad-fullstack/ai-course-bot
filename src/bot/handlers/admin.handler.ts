@@ -8,7 +8,6 @@ import { LessonsRepo } from '../../repos/lessons.repo';
 import { TasksRepo } from '../../repos/tasks.repo';
 import { ShopRepo } from '../../repos/shop.repo';
 import { StateStore } from '../state';
-import { AiAgentService } from '../../ai/ai-agent.service';
 import { BTN, adminMenu, cancelKeyboard, doneCancelKeyboard } from '../keyboards';
 import {
   ATT_LABELS,
@@ -35,7 +34,6 @@ export class AdminHandler {
     private readonly state: StateStore,
     private readonly lessonFlow: LessonFlowService,
     private readonly settings: SettingsRepo,
-    private readonly aiAgent: AiAgentService,
   ) {}
 
   // ── Xabarlar ────────────────────────────────────────────────────────────────
@@ -96,23 +94,6 @@ export class AdminHandler {
         return this.showReport(ctx);
       case BTN.PAYMENTS:
         return this.showPayments(ctx);
-    }
-
-    // ── Hech qaysi menyu/state mos kelmadi — AI agentga yuboriladi ────────────
-    if (text) {
-      const reply = await this.aiAgent.handleText(ctx.api, text);
-      await ctx.reply(reply, { reply_markup: adminMenu() });
-      return;
-    }
-
-    if (ctx.message?.voice) {
-      const file = await ctx.getFile();
-      if (!file.file_path) {
-        await ctx.reply("⚠️ Ovozli xabarni qayta ishlab bo'lmadi.", { reply_markup: adminMenu() });
-        return;
-      }
-      const reply = await this.aiAgent.handleVoice(ctx.api, file.file_path);
-      await ctx.reply(reply, { reply_markup: adminMenu() });
     }
   }
 
