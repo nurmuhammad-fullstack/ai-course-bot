@@ -91,6 +91,17 @@ const ICON_PATHS = {
   clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  brain: '<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.5A2.5 2.5 0 0 1 5 17.5v-1.42A2.5 2.5 0 0 1 3 13.5v-3A2.5 2.5 0 0 1 5 7.58V6.5A2.5 2.5 0 0 1 7.5 4 2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.5A2.5 2.5 0 0 0 19 17.5v-1.42a2.5 2.5 0 0 0 2-2.58v-3a2.5 2.5 0 0 0-2-2.42V6.5A2.5 2.5 0 0 0 16.5 4 2.5 2.5 0 0 0 14.5 2Z"/>',
+  headphones: '<path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a1 1 0 0 1-1-1v-6a9 9 0 0 1 18 0v6a1 1 0 0 1-1 1h-2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/>',
+  mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/>',
+  keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01"/><path d="M10 10h.01"/><path d="M14 10h.01"/><path d="M18 10h.01"/><path d="M7 14h10"/>',
+  usb: '<circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="2"/><path d="M4 18v-6a2 2 0 0 1 2-2h9"/><path d="M14 4v13"/><path d="m14 4 3 3"/><path d="m14 4-3 3"/>',
+  power: '<rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>',
+  globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+  trophy: '<path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M17 5h3a2 2 0 0 1-2 4h-1"/><path d="M7 5H4a2 2 0 0 0 2 4h1"/>',
+  badge: '<circle cx="12" cy="8" r="6"/><path d="m9 13.5-1.5 7L12 18l4.5 2.5-1.5-7"/>',
+  certificate: '<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8"/><path d="M9 17v4"/><path d="M15 17v4"/><circle cx="12" cy="10" r="3"/>',
 };
 
 function icon(name, size, cls) {
@@ -1026,13 +1037,16 @@ function renderAdminShop() {
     }
     items.forEach((it) => {
       const card = el(
-        '<div class="cat-card static">' +
-          '<div class="cc-icon">' + icon('gift', 22) + '</div>' +
-          '<div class="cc-body"><div class="cc-title">' + esc(it.name) + '</div>' +
-            '<div class="cc-sub"><span class="att-stat" style="color:var(--amber)">' + icon('coins', 13) + it.price + ' coin</span></div></div>' +
+        '<div class="shop-card">' +
+          '<div class="shop-card-media">' + icon(it.icon || 'gift', 36) + '</div>' +
+          '<div class="shop-card-body">' +
+            '<div class="cc-title">' + esc(it.name) + '</div>' +
+            (it.description ? '<div class="cc-sub" style="margin-top:2px">' + esc(it.description) + '</div>' : '') +
+            '<div class="cc-sub" style="margin-top:6px"><span class="att-stat" style="color:var(--amber)">' + icon('coins', 13) + it.price + ' coin</span></div>' +
+          '</div>' +
         '</div>'
       );
-      const btn = el('<button type="button" class="btn btn-red btn-sm">O’chirish</button>');
+      const btn = el('<button type="button" class="btn btn-red btn-sm" style="margin-top:10px;width:100%">O’chirish</button>');
       btn.addEventListener('click', async () => {
         const ok = await askConfirm('«' + it.name + '» sovg’asini o’chirasizmi?');
         if (!ok) return;
@@ -1091,25 +1105,44 @@ function orderCard(o, refresh) {
   return card;
 }
 
+const SHOP_ICON_CHOICES = [
+  'gift', 'code', 'brain', 'headphones', 'mouse', 'keyboard',
+  'usb', 'power', 'globe', 'trophy', 'badge', 'certificate',
+];
+
 function openAddItemSheet() {
+  let selectedIcon = SHOP_ICON_CHOICES[0];
   const content = el(
     '<div>' +
       '<h3>Yangi sovg’a</h3>' +
-      '<div class="field"><label for="g-name">Nomi</label><input id="g-name" type="text" placeholder="Masalan: Kitob" /></div>' +
-      '<div class="field"><label for="g-price">Narxi (coin)</label><input id="g-price" type="number" inputmode="numeric" min="1" placeholder="50" /></div>' +
+      '<div class="field"><label for="g-name">Nomi</label><input id="g-name" type="text" placeholder="Masalan: Simsiz sichqoncha" /></div>' +
+      '<div class="field"><label for="g-desc">Tavsif (ixtiyoriy)</label><input id="g-desc" type="text" placeholder="Qisqacha izoh" /></div>' +
+      '<div class="field"><label for="g-price">Narxi (coin, kamida 1000)</label><input id="g-price" type="number" inputmode="numeric" min="1000" placeholder="1500" /></div>' +
+      '<div class="field"><label>Ikonka</label><div class="icon-picker" data-role="icon-picker"></div></div>' +
       '<button type="button" class="btn btn-primary btn-block" data-act="save">Qo’shish va e’lon qilish</button>' +
     '</div>'
   );
+  const picker = content.querySelector('[data-role="icon-picker"]');
+  SHOP_ICON_CHOICES.forEach((ic) => {
+    const b = el('<button type="button" class="icon-choice' + (ic === selectedIcon ? ' active' : '') + '">' + icon(ic, 22) + '</button>');
+    b.addEventListener('click', () => {
+      selectedIcon = ic;
+      picker.querySelectorAll('.icon-choice').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+    });
+    picker.appendChild(b);
+  });
   const close = openSheet(content);
   const btn = content.querySelector('[data-act="save"]');
   btn.addEventListener('click', () => {
     clearErr(content);
     const name = content.querySelector('#g-name').value.trim();
+    const description = content.querySelector('#g-desc').value.trim();
     const price = parseInt(content.querySelector('#g-price').value, 10);
     if (!name) { showErr(content, 'Nomini kiriting'); return; }
-    if (isNaN(price) || price <= 0) { showErr(content, 'Narxni kiriting'); return; }
+    if (isNaN(price) || price < 1000) { showErr(content, 'Narx kamida 1000 coin bo’lishi kerak'); return; }
     setBusy(btn, true);
-    api('/api/admin/shop', { method: 'POST', body: { name, price } })
+    api('/api/admin/shop', { method: 'POST', body: { name, price, description, icon: selectedIcon } })
       .then(() => { close(); renderAdminShop(); })
       .catch((e) => { setBusy(btn, false); if (!e.silent) showErr(content, e.message); });
   });
@@ -1532,14 +1565,17 @@ function renderStudentShop() {
     items.forEach((it) => {
       const affordable = balance >= it.price;
       const card = el(
-        '<div class="cat-card static' + (affordable ? '' : ' locked') + '">' +
-          '<div class="cc-icon">' + icon('gift', 22) + '</div>' +
-          '<div class="cc-body"><div class="cc-title">' + esc(it.name) + '</div>' +
-            '<div class="cc-sub"><span class="att-stat" style="color:var(--amber)">' + icon('coins', 13) + it.price + ' coin</span>' +
-            (affordable ? '' : '<span>Coin yetarli emas</span>') + '</div></div>' +
+        '<div class="shop-card' + (affordable ? '' : ' locked') + '">' +
+          '<div class="shop-card-media">' + icon(it.icon || 'gift', 36) + '</div>' +
+          '<div class="shop-card-body">' +
+            '<div class="cc-title">' + esc(it.name) + '</div>' +
+            (it.description ? '<div class="cc-sub" style="margin-top:2px">' + esc(it.description) + '</div>' : '') +
+            '<div class="cc-sub" style="margin-top:6px"><span class="att-stat" style="color:var(--amber)">' + icon('coins', 13) + it.price + ' coin</span>' +
+            (affordable ? '' : '<span> · yetarli emas</span>') + '</div>' +
+          '</div>' +
         '</div>'
       );
-      const btn = el('<button type="button" class="btn ' + (affordable ? 'btn-primary' : 'btn-ghost') + ' btn-sm"' + (affordable ? '' : ' disabled') + '>Olish</button>');
+      const btn = el('<button type="button" class="btn ' + (affordable ? 'btn-primary' : 'btn-ghost') + ' btn-sm" style="margin-top:10px;width:100%"' + (affordable ? '' : ' disabled') + '>Olish</button>');
       if (affordable) {
         btn.addEventListener('click', async () => {
           const ok = await askConfirm('«' + it.name + '» ni ' + it.price + ' coinga sotib olasizmi?');

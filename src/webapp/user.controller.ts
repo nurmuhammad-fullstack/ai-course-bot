@@ -195,7 +195,13 @@ export class UserController {
     ]);
     return {
       balance,
-      items: items.map((i) => ({ id: i.id, name: i.name, price: i.price })),
+      items: items.map((i) => ({
+        id: i.id,
+        name: i.name,
+        price: i.price,
+        icon: i.icon,
+        description: i.description,
+      })),
     };
   }
 

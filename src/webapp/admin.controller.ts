@@ -23,6 +23,12 @@ import { AdminGuard, TgAuthGuard } from './auth.guard';
 
 const ATT_STATUSES: AttStatus[] = ['came', 'missed_unexcused', 'missed_excused'];
 
+/** Coinshop kartalarida ishlatiladigan katta ikonkalar to'plami */
+const SHOP_ICONS = [
+  'gift', 'code', 'brain', 'headphones', 'mouse', 'keyboard',
+  'usb', 'power', 'globe', 'trophy', 'badge', 'certificate',
+];
+
 @Controller('api/admin')
 @UseGuards(TgAuthGuard, AdminGuard)
 export class AdminController {
@@ -444,7 +450,13 @@ export class AdminController {
     const items = await this.shop.listActive();
     const orders = await this.shop.pendingOrders();
     return {
-      items: items.map((i) => ({ id: i.id, name: i.name, price: i.price })),
+      items: items.map((i) => ({
+        id: i.id,
+        name: i.name,
+        price: i.price,
+        icon: i.icon,
+        description: i.description,
+      })),
       orders: orders.map(({ order, item, student }) => ({
         id: order.id,
         itemName: item.name,
@@ -455,7 +467,9 @@ export class AdminController {
   }
 
   @Post('shop')
-  async addShopItem(@Body() body: { name?: string; price?: number }) {
+  async addShopItem(
+    @Body() body: { name?: string; price?: number; icon?: string; description?: string },
+  ) {
     const price = Number(body?.price);
     if (!body?.name?.trim() || !Number.isInteger(price) || price <= 0) {
       throw new BadRequestException("Noto'g'ri sovg'a ma'lumoti");
@@ -463,7 +477,9 @@ export class AdminController {
     if (body.name.trim().length > 200 || price > 1000000) {
       throw new BadRequestException("Nom yoki narx chegaradan oshgan");
     }
-    const item = await this.shop.addItem(body.name.trim(), price);
+    const icon = SHOP_ICONS.includes(body.icon ?? '') ? (body.icon as string) : 'gift';
+    const description = body.description?.trim().slice(0, 300);
+    const item = await this.shop.addItem(body.name.trim(), price, icon, description);
     await this.notify.broadcastToStudents(
       `🛍 Coinshopda yangi sovg'a: ${item.name} — ${item.price} coin!`,
     );

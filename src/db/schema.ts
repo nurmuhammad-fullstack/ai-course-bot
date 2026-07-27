@@ -162,6 +162,8 @@ export const shopItems = pgTable('shop_items', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
   price: integer('price').notNull(),
+  description: text('description'),
+  icon: text('icon').notNull().default('gift'), // kartadagi katta ikonka kaliti
   isActive: boolean('is_active').notNull().default(true),
 });
 

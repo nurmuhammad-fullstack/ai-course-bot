@@ -309,6 +309,60 @@ svg { display: block; flex-shrink: 0; }
 .cat-card .cc-badge.zero { background: var(--page-bg); color: var(--text-2); }
 .cat-card.locked { opacity: 0.55; }
 
+/* ===== Shop card (rasmli sovg'a kartasi) ===== */
+.shop-card {
+  background: var(--card-bg);
+  border-radius: var(--r-lg);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 12px;
+  transition: opacity 200ms ease;
+}
+.shop-card.locked { opacity: 0.55; }
+.shop-card-media {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-sm);
+  background: linear-gradient(135deg, var(--primary-soft), #DCEFE2);
+  color: var(--primary-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.shop-card-body .cc-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.shop-card-body .cc-sub {
+  font-size: 13px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.icon-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+.icon-choice {
+  aspect-ratio: 1;
+  border-radius: var(--r-sm);
+  background: var(--page-bg);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+.icon-choice.active {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
 /* ===== Timeline ===== */
 
 .timeline { margin-bottom: 12px; }

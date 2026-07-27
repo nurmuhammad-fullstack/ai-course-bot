@@ -13,8 +13,16 @@ export class ShopRepo {
     return this.db.select().from(shopItems).where(eq(shopItems.isActive, true)).orderBy(shopItems.price);
   }
 
-  async addItem(name: string, price: number): Promise<ShopItem> {
-    const rows = await this.db.insert(shopItems).values({ name, price }).returning();
+  async addItem(
+    name: string,
+    price: number,
+    icon = 'gift',
+    description?: string,
+  ): Promise<ShopItem> {
+    const rows = await this.db
+      .insert(shopItems)
+      .values({ name, price, icon, description })
+      .returning();
     return rows[0];
   }
 
