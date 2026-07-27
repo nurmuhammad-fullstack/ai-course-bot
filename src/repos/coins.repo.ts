@@ -27,4 +27,12 @@ export class CoinsRepo {
       .orderBy(desc(coinTransactions.createdAt))
       .limit(limit);
   }
+
+  /** Barcha o'quvchilarning joriy balanslari yig'indisi (hozirda qo'lda bor coinlar) */
+  async totalBalance(): Promise<number> {
+    const [row] = await this.db
+      .select({ total: sql<number>`coalesce(sum(${coinTransactions.amount}), 0)::int` })
+      .from(coinTransactions);
+    return row?.total ?? 0;
+  }
 }

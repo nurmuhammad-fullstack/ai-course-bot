@@ -233,7 +233,6 @@ const TABS = {
     { id: 'students', label: "O'quvchilar", icon: 'users' },
     { id: 'tasks', label: 'Vazifalar', icon: 'clipboard' },
     { id: 'shop', label: 'Shop', icon: 'bag' },
-    { id: 'inbox', label: 'Inbox', icon: 'inbox' },
   ],
   student: [
     { id: 'home', label: 'Bosh', icon: 'home' },
@@ -277,7 +276,7 @@ function renderApp() {
   if (nav) root.appendChild(nav);
 
   const renderers = role === 'admin'
-    ? { home: renderAdminHome, students: renderAdminStudents, tasks: renderAdminTasks, shop: renderAdminShop, inbox: renderAdminInbox }
+    ? { home: renderAdminHome, students: renderAdminStudents, tasks: renderAdminTasks, shop: renderAdminShop }
     : { home: renderStudentHome, tasks: renderStudentTasks, shop: renderStudentShop };
 
   (renderers[state.tab] || renderers.home)();
@@ -287,6 +286,45 @@ function mountScreen(screenEl) {
   const old = root.querySelector('.screen, .boot-skeleton');
   if (old) old.replaceWith(screenEl);
   else root.prepend(screenEl);
+}
+
+/* Swipe/tap bilan boshqariladigan oddiy banner-karusel (tactile 150-200ms transition) */
+function setupCarousel(root, track, dotsEl) {
+  const dots = Array.from(dotsEl.children);
+  let index = 0;
+  let startX = 0;
+  let dx = 0;
+  let dragging = false;
+
+  function goTo(i) {
+    index = Math.max(0, Math.min(track.children.length - 1, i));
+    track.style.transform = 'translateX(-' + index * 100 + '%)';
+    dots.forEach((d, di) => d.classList.toggle('active', di === index));
+  }
+
+  root.addEventListener('touchstart', (e) => {
+    dragging = true;
+    startX = e.touches[0].clientX;
+    track.style.transition = 'none';
+  }, { passive: true });
+
+  root.addEventListener('touchmove', (e) => {
+    if (!dragging) return;
+    dx = e.touches[0].clientX - startX;
+    track.style.transform = 'translateX(calc(-' + index * 100 + '% + ' + dx + 'px))';
+  }, { passive: true });
+
+  root.addEventListener('touchend', () => {
+    dragging = false;
+    track.style.transition = '';
+    if (dx < -50 && index < track.children.length - 1) goTo(index + 1);
+    else if (dx > 50 && index > 0) goTo(index - 1);
+    else goTo(index);
+    dx = 0;
+  });
+
+  dots.forEach((d, di) => d.addEventListener('click', () => goTo(di)));
+  goTo(0);
 }
 
 function screenError(message, retry) {
@@ -305,26 +343,51 @@ function screenError(message, retry) {
 function renderAdminHome() {
   if (state.view && state.view.name === 'finishLesson') { renderFinishLesson(); return; }
   if (state.view && state.view.name === 'payments') { renderPaymentsView(); return; }
+  if (state.view && state.view.name === 'inbox') { renderAdminInbox(); return; }
 
   api('/api/admin/home').then((data) => {
     const s = el('<div class="screen"></div>');
     const t = data.today || {};
     const now = new Date();
 
-    const header = el(
-      '<section class="header-card">' +
-        '<div class="hc-date">' + icon('calendar', 15) + '<span>' + now.getDate() + '-' + MONTHS[now.getMonth()] + ', ' + esc(t.dayName || DAY_FULL[now.getDay()]) + '</span></div>' +
-        '<div class="hc-title">' + (t.isLessonDay ? 'Bugun dars bor' : 'Bugun dars yo’q') + '</div>' +
-        (t.isLessonDay && t.lessonTime
-          ? '<div class="hc-sub">' + icon('clock', 15) + '<span>Boshlanish vaqti: ' + esc(t.lessonTime) + '</span></div>'
-          : '<div class="hc-sub">' + icon('users', 15) + '<span>O’quvchilar: ' + (data.studentsCount || 0) + ' ta</span></div>') +
-        '<button type="button" class="pill-btn" data-act="finish">' + icon('check', 18) + 'Darsni yakunlash</button>' +
-      '</section>'
+    /* Banner 1: bugungi dars holati */
+    const lessonSlide = el(
+      '<div class="banner-slide">' +
+        '<section class="header-card">' +
+          '<div class="hc-date">' + icon('calendar', 15) + '<span>' + now.getDate() + '-' + MONTHS[now.getMonth()] + ', ' + esc(t.dayName || DAY_FULL[now.getDay()]) + '</span></div>' +
+          '<div class="hc-title">' + (t.isLessonDay ? 'Bugun dars bor' : 'Bugun dars yo’q') + '</div>' +
+          (t.isLessonDay && t.lessonTime
+            ? '<div class="hc-sub">' + icon('clock', 15) + '<span>Boshlanish vaqti: ' + esc(t.lessonTime) + '</span></div>'
+            : '<div class="hc-sub">' + icon('users', 15) + '<span>O’quvchilar: ' + (data.studentsCount || 0) + ' ta</span></div>') +
+          '<button type="button" class="pill-btn" data-act="finish">' + icon('check', 18) + 'Darsni yakunlash</button>' +
+        '</section>' +
+      '</div>'
     );
-    header.querySelector('[data-act="finish"]').addEventListener('click', (e) => {
+    lessonSlide.querySelector('[data-act="finish"]').addEventListener('click', (e) => {
       startFinishLesson(e.currentTarget, s);
     });
-    s.appendChild(header);
+
+    /* Banner 2: jami coin statistikasi */
+    const coinSlide = el(
+      '<div class="banner-slide">' +
+        '<section class="header-card header-card--coin">' +
+          '<div class="hc-date">' + icon('coins', 15) + '<span>Umumiy statistika</span></div>' +
+          '<div class="hc-coin-row">' + icon('coins', 34) + '<span class="hc-coin-num">' + (data.totalCoins || 0) + '</span></div>' +
+          '<div class="hc-title" style="font-size:16px;font-weight:600">o’quvchilarda coin bor</div>' +
+          '<div class="hc-sub">' + icon('users', 15) + '<span>' + (data.studentsCount || 0) + ' ta o’quvchi ishtirokida</span></div>' +
+        '</section>' +
+      '</div>'
+    );
+
+    const carousel = el('<div class="banner-carousel"></div>');
+    const track = el('<div class="banner-track"></div>');
+    track.appendChild(lessonSlide);
+    track.appendChild(coinSlide);
+    carousel.appendChild(track);
+    const dots = el('<div class="banner-dots"><span class="dot active"></span><span class="dot"></span></div>');
+    carousel.appendChild(dots);
+    setupCarousel(carousel, track, dots);
+    s.appendChild(carousel);
 
     /* Hafta kun chiplari (joriy hafta sanalari bilan) */
     s.appendChild(el('<h2 class="section-title">Dars jadvali</h2>'));
@@ -371,7 +434,7 @@ function renderAdminHome() {
           '<div class="cc-right"><span class="cc-badge' + (n ? '' : ' zero') + '">' + n + '</span>' + icon('chevron', 20) + '</div>' +
         '</button>'
       );
-      card.addEventListener('click', () => { state.tab = 'inbox'; state.view = null; renderApp(); });
+      card.addEventListener('click', () => { state.view = { name: 'inbox' }; renderApp(); });
       s.appendChild(card);
     });
 
@@ -635,7 +698,7 @@ function openStudentSheet(st) {
       '<h3>' + esc(st.name) + '</h3>' +
       '<div class="detail-list">' +
         '<div class="detail-row"><span class="dr-label">' + icon('users', 15) + 'Telefon</span><span class="dr-value">' + esc(st.phone || '—') + '</span></div>' +
-        '<div class="detail-row"><span class="dr-label">' + icon('coins', 15) + 'Coin balans</span><span class="dr-value">' + (st.coins || 0) + '</span></div>' +
+        '<div class="detail-row"><span class="dr-label">' + icon('coins', 15) + 'Coin balans</span><span class="dr-value" data-role="coin-balance">' + (st.coins || 0) + '</span></div>' +
         '<div class="detail-row"><span class="dr-label">' + icon('check', 15) + 'Kelgan darslar</span><span class="dr-value">' + (att.came || 0) + ' ta</span></div>' +
         '<div class="detail-row"><span class="dr-label">' + icon('x', 15) + 'Qoldirgan darslar</span><span class="dr-value">' + (att.missed || 0) + ' ta</span></div>' +
         '<div class="detail-row"><span class="dr-label">' + icon('clipboard', 15) + 'Hisoblangan</span><span class="dr-value">' + fmtMoney(pay.charged || 0) + ' (' + (pay.chargedCount || 0) + ' dars)</span></div>' +
@@ -651,11 +714,79 @@ function openStudentSheet(st) {
         '</div>' +
         '<div data-role="due-msg"></div>' +
       '</div>' +
-      '<button type="button" class="btn btn-red btn-block" style="margin-top:16px" data-act="delete">' + icon('x', 16) + 'O’quvchini o’chirish</button>' +
+      '<div class="coin-editor" style="margin-top:18px">' +
+        '<label style="font-size:13px;color:var(--text-2);display:block;margin-bottom:6px">Coin qo’shish / ayirish</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input id="coin-amount-input" type="number" inputmode="numeric" placeholder="Miqdor (masalan 10)" style="flex:1" />' +
+          '<button type="button" class="btn btn-primary btn-sm" data-act="coin-add">' + icon('coins', 16) + '+ Qo’shish</button>' +
+          '<button type="button" class="btn btn-red btn-sm" data-act="coin-sub">− Ayirish</button>' +
+        '</div>' +
+        '<input id="coin-reason-input" type="text" placeholder="Sabab (ixtiyoriy)" style="margin-top:8px" maxlength="200" />' +
+        '<div data-role="coin-msg"></div>' +
+      '</div>' +
+      '<div style="margin-top:18px">' +
+        '<label style="font-size:13px;color:var(--text-2);display:block;margin-bottom:6px">Coin tarixi</label>' +
+        '<div class="detail-list" data-role="coin-history"><div class="skeleton skeleton-card short"></div></div>' +
+      '</div>' +
+      '<button type="button" class="btn btn-red btn-block" style="margin-top:20px" data-act="delete">' + icon('x', 16) + 'O’quvchini o’chirish</button>' +
       '<div data-role="del-msg"></div>' +
     '</div>'
   );
-  const close = openSheet(content);
+  const closeSheet = openSheet(content);
+  const close = () => { closeSheet(); renderAdminStudents(); };
+
+  function loadCoinHistory() {
+    const box = content.querySelector('[data-role="coin-history"]');
+    api('/api/admin/students/' + st.id + '/coins').then((data) => {
+      clear(box);
+      content.querySelector('[data-role="coin-balance"]').textContent = data.balance || 0;
+      if (!data.history || !data.history.length) {
+        box.appendChild(el('<div class="detail-row"><span class="dr-label">Hali tarix yo’q</span></div>'));
+        return;
+      }
+      data.history.forEach((h) => {
+        const positive = h.amount > 0;
+        box.appendChild(el(
+          '<div class="detail-row">' +
+            '<span class="dr-label">' + esc(fmtDateTime(h.createdAt)) + ' · ' + esc(h.reason) + '</span>' +
+            '<span class="status-chip ' + (positive ? 'green' : 'red') + '">' + (positive ? '+' : '') + h.amount + '</span>' +
+          '</div>'
+        ));
+      });
+    }).catch((e) => { clear(box); if (!e.silent) showErr(box, e.message); });
+  }
+  loadCoinHistory();
+
+  function adjustCoins(sign, btn) {
+    const box = content.querySelector('[data-role="coin-msg"]');
+    clear(box);
+    const raw = content.querySelector('#coin-amount-input').value;
+    const n = parseInt(raw, 10);
+    if (!n || n <= 0) {
+      box.appendChild(el('<div class="err-msg">Musbat raqam kiriting</div>'));
+      return;
+    }
+    const reason = content.querySelector('#coin-reason-input').value.trim();
+    setBusy(btn, true);
+    api('/api/admin/students/' + st.id + '/coins', {
+      method: 'POST',
+      body: { amount: sign * n, reason: reason || undefined },
+    })
+      .then(() => {
+        setBusy(btn, false);
+        content.querySelector('#coin-amount-input').value = '';
+        content.querySelector('#coin-reason-input').value = '';
+        loadCoinHistory();
+      })
+      .catch((err) => {
+        setBusy(btn, false);
+        clear(box);
+        box.appendChild(el('<div class="err-msg">' + esc(err.message) + '</div>'));
+      });
+  }
+  content.querySelector('[data-act="coin-add"]').addEventListener('click', (e) => adjustCoins(1, e.currentTarget));
+  content.querySelector('[data-act="coin-sub"]').addEventListener('click', (e) => adjustCoins(-1, e.currentTarget));
+
   content.querySelector('[data-act="save-due"]').addEventListener('click', (e) => {
     const btn = e.currentTarget;
     const val = content.querySelector('#due-date-input').value || null;
@@ -977,6 +1108,10 @@ function renderAdminInbox() {
   ]).then(([requests, submissions, shopData]) => {
     const s = el('<div class="screen"></div>');
     const orders = (shopData && shopData.orders) || [];
+
+    const back = el('<button type="button" class="back-btn">' + icon('chevron', 18) + 'Orqaga</button>');
+    back.addEventListener('click', () => { state.view = null; renderApp(); });
+    s.appendChild(back);
 
     s.appendChild(el(
       '<section class="header-card">' +

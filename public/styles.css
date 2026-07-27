@@ -118,6 +118,58 @@ svg { display: block; flex-shrink: 0; }
   margin-top: 8px;
 }
 
+/* ===== Banner carousel ===== */
+.banner-carousel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  margin-bottom: 10px;
+  touch-action: pan-y;
+}
+.banner-track {
+  display: flex;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.banner-slide {
+  flex: 0 0 100%;
+  min-width: 100%;
+}
+.banner-slide .header-card { margin-bottom: 0; }
+.banner-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 10px 0 18px;
+}
+.banner-dots .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #D8DCE1;
+  transition: width 200ms ease, background-color 200ms ease;
+  cursor: pointer;
+}
+.banner-dots .dot.active {
+  width: 18px;
+  background: var(--primary);
+}
+
+.header-card--coin {
+  background: linear-gradient(135deg, #17966E, var(--primary-dark));
+}
+.hc-coin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.hc-coin-num {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .pill-btn {
   display: inline-flex;
   align-items: center;
@@ -372,6 +424,22 @@ svg { display: block; flex-shrink: 0; }
 }
 .field textarea { min-height: 96px; resize: vertical; }
 .field input:focus, .field textarea:focus, .field select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(31, 160, 90, 0.15);
+}
+
+.coin-editor input[type="text"],
+.coin-editor input[type="number"] {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1.5px solid #E3E6EA;
+  border-radius: var(--r-sm);
+  background: var(--card-bg);
+  outline: none;
+  width: 100%;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.coin-editor input:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(31, 160, 90, 0.15);
 }

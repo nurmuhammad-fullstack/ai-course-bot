@@ -52,6 +52,7 @@ export class AdminController {
     const submissions = await this.tasks.pendingSubmissions();
     const orders = await this.shop.pendingOrders();
     const students = await this.users.listByRole('student');
+    const totalCoins = await this.coins.totalBalance();
     return {
       today: {
         dayOfWeek,
@@ -66,6 +67,7 @@ export class AdminController {
         orders: orders.length,
       },
       studentsCount: students.length,
+      totalCoins,
     };
   }
 
@@ -203,6 +205,48 @@ export class AdminController {
       });
     }
     return result;
+  }
+
+  @Get('students/:id/coins')
+  async studentCoinHistory(@Param('id', ParseIntPipe) id: number) {
+    const student = await this.users.byId(id);
+    if (!student || student.role !== 'student') throw new NotFoundException("O'quvchi topilmadi");
+    const [balance, history] = await Promise.all([
+      this.coins.balance(id),
+      this.coins.history(id, 30),
+    ]);
+    return {
+      balance,
+      history: history.map((h) => ({ amount: h.amount, reason: h.reason, createdAt: h.createdAt })),
+    };
+  }
+
+  @Post('students/:id/coins')
+  async adjustStudentCoins(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { amount?: number; reason?: string },
+  ) {
+    const student = await this.users.byId(id);
+    if (!student || student.role !== 'student') throw new NotFoundException("O'quvchi topilmadi");
+    const amount = Number(body?.amount);
+    if (!Number.isInteger(amount) || amount === 0) {
+      throw new BadRequestException("Noto'g'ri miqdor");
+    }
+    const reason = body?.reason?.trim().slice(0, 200) || (amount > 0 ? 'Admin tomonidan qo\'shildi' : 'Admin tomonidan ayirildi');
+    await this.coins.add(id, amount, reason);
+    const balance = await this.coins.balance(id);
+    if (balance < 0) {
+      // Manfiy balansga ruxsat bermaymiz — ortga qaytaramiz
+      await this.coins.add(id, -amount, `Bekor qilindi (balans manfiy bo'lib qolardi): ${reason}`);
+      throw new BadRequestException("Bu amaldan so'ng balans manfiy bo'lib qoladi");
+    }
+    await this.notify.send(
+      student.telegramId,
+      amount > 0
+        ? `💰 Sizga ${amount} coin qo'shildi!\nSabab: ${reason}\nBalans: ${balance} coin`
+        : `💰 Sizdan ${Math.abs(amount)} coin ayirildi.\nSabab: ${reason}\nBalans: ${balance} coin`,
+    );
+    return { ok: true, balance };
   }
 
   @Post('students/:id/delete')
