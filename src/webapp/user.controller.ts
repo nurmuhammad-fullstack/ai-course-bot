@@ -200,6 +200,7 @@ export class UserController {
         name: i.name,
         price: i.price,
         icon: i.icon,
+        imageUrl: i.imageUrl,
         description: i.description,
       })),
     };

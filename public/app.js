@@ -109,6 +109,14 @@ function icon(name, size, cls) {
   return '<svg class="' + (cls || '') + '" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICON_PATHS[name] || '') + '</svg>';
 }
 
+/* Sovg'a kartasi mediasi: rasm bo'lsa <img>, bo'lmasa katta ikonka */
+function shopCardMedia(item) {
+  if (item.imageUrl) {
+    return '<img class="shop-card-media" src="' + esc(item.imageUrl) + '" alt="' + esc(item.name) + '" loading="lazy" />';
+  }
+  return '<div class="shop-card-media">' + icon(item.icon || 'gift', 36) + '</div>';
+}
+
 /* ---------- DOM helperlar ---------- */
 const root = document.getElementById('app');
 
@@ -1038,7 +1046,7 @@ function renderAdminShop() {
     items.forEach((it) => {
       const card = el(
         '<div class="shop-card">' +
-          '<div class="shop-card-media">' + icon(it.icon || 'gift', 36) + '</div>' +
+          shopCardMedia(it) +
           '<div class="shop-card-body">' +
             '<div class="cc-title">' + esc(it.name) + '</div>' +
             (it.description ? '<div class="cc-sub" style="margin-top:2px">' + esc(it.description) + '</div>' : '') +
@@ -1566,7 +1574,7 @@ function renderStudentShop() {
       const affordable = balance >= it.price;
       const card = el(
         '<div class="shop-card' + (affordable ? '' : ' locked') + '">' +
-          '<div class="shop-card-media">' + icon(it.icon || 'gift', 36) + '</div>' +
+          shopCardMedia(it) +
           '<div class="shop-card-body">' +
             '<div class="cc-title">' + esc(it.name) + '</div>' +
             (it.description ? '<div class="cc-sub" style="margin-top:2px">' + esc(it.description) + '</div>' : '') +

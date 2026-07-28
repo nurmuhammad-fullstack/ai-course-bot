@@ -329,6 +329,7 @@ svg { display: block; flex-shrink: 0; }
   align-items: center;
   justify-content: center;
   margin-bottom: 12px;
+  object-fit: cover;
 }
 .shop-card-body .cc-title {
   font-size: 15px;

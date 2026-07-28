@@ -163,7 +163,8 @@ export const shopItems = pgTable('shop_items', {
   name: text('name').notNull(),
   price: integer('price').notNull(),
   description: text('description'),
-  icon: text('icon').notNull().default('gift'), // kartadagi katta ikonka kaliti
+  icon: text('icon').notNull().default('gift'), // fallback: kartadagi ikonka kaliti (rasm bo'lmasa)
+  imageUrl: text('image_url'), // /shop-images/... — mavjud bo'lsa ikonka o'rniga shu ko'rsatiladi
   isActive: boolean('is_active').notNull().default(true),
 });
 

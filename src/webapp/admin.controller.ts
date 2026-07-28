@@ -455,6 +455,7 @@ export class AdminController {
         name: i.name,
         price: i.price,
         icon: i.icon,
+        imageUrl: i.imageUrl,
         description: i.description,
       })),
       orders: orders.map(({ order, item, student }) => ({
