@@ -255,6 +255,19 @@ svg { display: block; flex-shrink: 0; }
 }
 .cat-card:active { background: var(--primary-soft); }
 .cat-card.static:active { background: var(--card-bg); }
+.icon-btn-red {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  color: var(--red);
+  background: transparent;
+  transition: background-color 200ms ease;
+}
+.icon-btn-red:active { background: #FCE8E9; }
 .cat-card .cc-icon {
   width: 46px;
   height: 46px;

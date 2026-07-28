@@ -143,6 +143,24 @@ export class AdminController {
     return this.courseGroups.update(id, patch);
   }
 
+  @Post('groups/:id/deactivate')
+  async deactivateGroup(@Param('id', ParseIntPipe) id: number) {
+    const group = await this.courseGroups.byId(id);
+    if (!group) throw new NotFoundException('Guruh topilmadi');
+    const students = await this.users.listByRole('student', id);
+    if (students.length) {
+      throw new BadRequestException(
+        `Bu guruhda ${students.length} ta o'quvchi bor — avval ularni boshqa guruhga o'tkazing yoki o'chiring`,
+      );
+    }
+    const groups = await this.courseGroups.list();
+    if (groups.length <= 1) {
+      throw new BadRequestException("Kamida bitta faol guruh qolishi kerak");
+    }
+    await this.courseGroups.deactivate(id);
+    return { ok: true };
+  }
+
   // ── Bosh sahifa ─────────────────────────────────────────────────────────────
   @Get('home')
   async home(@Query('groupId') groupIdRaw?: string) {

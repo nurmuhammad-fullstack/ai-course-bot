@@ -352,17 +352,35 @@ function openGroupSwitcherSheet() {
     state.groups.forEach((g) => {
       const active = g.id === state.currentGroupId;
       const row = el(
-        '<button type="button" class="cat-card' + (active ? '' : ' static') + '" style="margin-bottom:8px">' +
+        '<div class="cat-card' + (active ? '' : ' static') + '" style="margin-bottom:8px;cursor:pointer">' +
           '<div class="cc-icon">' + icon('users', 20) + '</div>' +
           '<div class="cc-body"><div class="cc-title">' + esc(g.name) + (active ? ' ✅' : '') + '</div>' +
             '<div class="cc-sub"><span>' + fmtMoney(g.totalPrice) + ' · ' + g.lessonsCount + ' dars</span></div></div>' +
-        '</button>'
+          '<button type="button" class="icon-btn-red" data-act="delete-group" aria-label="Guruhni o’chirish">' + icon('x', 18) + '</button>' +
+        '</div>'
       );
-      row.addEventListener('click', () => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('[data-act="delete-group"]')) return;
         state.currentGroupId = g.id;
         localStorage.setItem('currentGroupId', g.id);
         close();
         renderApp();
+      });
+      row.querySelector('[data-act="delete-group"]').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await askConfirm('«' + g.name + '» guruhini o’chirasizmi? (o’quvchisi bo’lmasa)');
+        if (!ok) return;
+        api('/api/admin/groups/' + g.id + '/deactivate', { method: 'POST' })
+          .then(() => api('/api/admin/groups'))
+          .then((groups) => {
+            state.groups = groups || [];
+            if (state.currentGroupId === g.id) {
+              state.currentGroupId = state.groups[0] ? state.groups[0].id : null;
+              if (state.currentGroupId != null) localStorage.setItem('currentGroupId', state.currentGroupId);
+            }
+            renderList();
+          })
+          .catch((err) => { if (!err.silent) alert(err.message); });
       });
       list.appendChild(row);
     });
