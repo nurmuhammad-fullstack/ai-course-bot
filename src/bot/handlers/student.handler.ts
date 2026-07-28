@@ -77,7 +77,7 @@ export class StudentHandler {
   }
 
   private async showTasks(ctx: Context, user: User) {
-    const tasks = await this.tasks.listActive();
+    const tasks = await this.tasks.listActive(user.groupId!);
     if (!tasks.length) {
       await ctx.reply("📭 Hozircha faol vazifalar yo'q.");
       return;

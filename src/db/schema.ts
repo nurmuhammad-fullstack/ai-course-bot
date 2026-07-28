@@ -9,6 +9,18 @@ import {
   unique,
 } from 'drizzle-orm/pg-core';
 
+// Har guruh - mustaqil kichik kurs: o'z jadvali, darslari, narxi, vazifalari.
+// Coinshop va coin balansi guruhlardan mustaqil (umumiy) qoladi.
+export const courseGroups = pgTable('course_groups', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  totalPrice: integer('total_price').notNull(),
+  lessonsCount: integer('lessons_count').notNull(),
+  telegramChatId: text('telegram_chat_id'), // uyga vazifa shu chatga boradi
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // role: 'pending' | 'student' | 'parent' | 'admin'
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -17,6 +29,7 @@ export const users = pgTable('users', {
   phone: text('phone'),
   username: text('username'),
   role: text('role').notNull().default('pending'),
+  groupId: integer('group_id').references(() => courseGroups.id), // faqat student uchun mazmunli
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -34,19 +47,33 @@ export const parentLinks = pgTable(
   (t) => [unique().on(t.parentId, t.studentId)],
 );
 
-// Du/Chor/Ju jadvali: dayOfWeek 1=Dushanba ... 0=Yakshanba
-export const schedule = pgTable('schedule', {
-  id: serial('id').primaryKey(),
-  dayOfWeek: integer('day_of_week').notNull().unique(),
-  lessonTime: text('lesson_time').notNull(), // "18:00"
-});
+// Du/Chor/Ju jadvali: dayOfWeek 1=Dushanba ... 0=Yakshanba. Har guruh o'z jadvaliga ega.
+export const schedule = pgTable(
+  'schedule',
+  {
+    id: serial('id').primaryKey(),
+    groupId: integer('group_id')
+      .notNull()
+      .references(() => courseGroups.id, { onDelete: 'cascade' }),
+    dayOfWeek: integer('day_of_week').notNull(),
+    lessonTime: text('lesson_time').notNull(), // "18:00"
+  },
+  (t) => [unique().on(t.groupId, t.dayOfWeek)],
+);
 
-// Bo'lib o'tgan (admin tasdiqlagan) darslar
-export const courseLessons = pgTable('course_lessons', {
-  id: serial('id').primaryKey(),
-  lessonDate: date('lesson_date').notNull().unique(),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+// Bo'lib o'tgan (admin tasdiqlagan) darslar — guruh bo'yicha
+export const courseLessons = pgTable(
+  'course_lessons',
+  {
+    id: serial('id').primaryKey(),
+    groupId: integer('group_id')
+      .notNull()
+      .references(() => courseGroups.id, { onDelete: 'cascade' }),
+    lessonDate: date('lesson_date').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [unique().on(t.groupId, t.lessonDate)],
+);
 
 // status: 'came' | 'missed_unexcused' | 'missed_excused'
 export const attendance = pgTable(
@@ -91,9 +118,11 @@ export const paymentCharges = pgTable(
   (t) => [unique().on(t.lessonId, t.studentId)],
 );
 
-// type: 'quiz' | 'assignment'
+// type: 'quiz' | 'assignment'. groupId nullable — kelajakda "umumiy vazifa" imkoniyati uchun ochiq,
+// amalda har doim to'ldiriladi (vazifalar guruh-xos).
 export const tasks = pgTable('tasks', {
   id: serial('id').primaryKey(),
+  groupId: integer('group_id').references(() => courseGroups.id, { onDelete: 'cascade' }),
   type: text('type').notNull(),
   title: text('title').notNull(),
   description: text('description'),

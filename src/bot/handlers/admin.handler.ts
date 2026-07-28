@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Api, Context, InlineKeyboard } from 'grammy';
-import { COURSE } from '../../config';
 import { UsersRepo } from '../../repos/users.repo';
 import { PaymentsRepo } from '../../repos/payments.repo';
 import { CoinsRepo } from '../../repos/coins.repo';
 import { LessonsRepo } from '../../repos/lessons.repo';
 import { TasksRepo } from '../../repos/tasks.repo';
 import { ShopRepo } from '../../repos/shop.repo';
+import { CourseGroupsRepo } from '../../repos/course-groups.repo';
 import { StateStore } from '../state';
 import { BTN, adminMenu, cancelKeyboard, doneCancelKeyboard } from '../keyboards';
 import {
@@ -32,7 +32,20 @@ export class AdminHandler {
     private readonly state: StateStore,
     private readonly lessonFlow: LessonFlowService,
     private readonly settings: SettingsRepo,
+    private readonly courseGroups: CourseGroupsRepo,
   ) {}
+
+  /** Admin uchun joriy faol guruh — settings jadvalida saqlanadi, bot restart bo'lsa ham saqlanadi */
+  async getActiveGroupId(adminChatId: string): Promise<number> {
+    const raw = await this.settings.get(`active_group:${adminChatId}`);
+    const groups = await this.courseGroups.list();
+    if (!groups.length) throw new Error("Hali birorta guruh yo'q. Mini app orqali guruh yarating.");
+    if (raw) {
+      const id = parseInt(raw, 10);
+      if (groups.some((g) => g.id === id)) return id;
+    }
+    return groups[0].id;
+  }
 
   // ── Xabarlar ────────────────────────────────────────────────────────────────
   async handleMessage(ctx: Context): Promise<void> {
@@ -60,20 +73,31 @@ export class AdminHandler {
       return;
     }
 
+    let groupId: number;
+    try {
+      groupId = await this.getActiveGroupId(chatId);
+    } catch (e) {
+      if (text === BTN.SWITCH_GROUP) {
+        await ctx.reply((e as Error).message);
+        return;
+      }
+      groupId = 0; // shop/hisobot kabi guruhsiz ishlaydigan bo'limlar uchun pastda qayta hisoblanadi
+    }
+
     switch (text) {
       case BTN.REQUESTS:
         return this.showRequests(ctx);
       case BTN.STUDENTS:
-        return this.showStudents(ctx);
+        return this.showStudents(ctx, groupId);
       case BTN.SCHEDULE:
-        return this.showSchedule(ctx);
+        return this.showSchedule(ctx, groupId);
       case BTN.FINISH_LESSON: {
-        if (!(await this.lessons.scheduleForDay(todayDayOfWeek()))) {
+        if (!(await this.lessons.scheduleForDay(groupId, todayDayOfWeek()))) {
           await ctx.reply("❌ Bugun dars kuni emas — darsni yakunlab bo'lmaydi.\n\nDars kunlari: «🕐 Dars jadvali» bo'limida.");
           return;
         }
         await ctx.reply('Bugungi darsni yakunlab, davomat va to‘lovni belgilaymizmi?', {
-          reply_markup: new InlineKeyboard().text('✅ Ha, yakunlash', 'lessonend:start'),
+          reply_markup: new InlineKeyboard().text('✅ Ha, yakunlash', `lessonend:start:${groupId}`),
         });
         return;
       }
@@ -85,18 +109,38 @@ export class AdminHandler {
         });
         return;
       case BTN.SUBMISSIONS:
-        return this.showSubmissions(ctx);
+        return this.showSubmissions(ctx, groupId);
       case BTN.SHOP_ADMIN:
         return this.showShopAdmin(ctx);
       case BTN.REPORT:
-        return this.showReport(ctx);
+        return this.showReport(ctx, groupId);
       case BTN.PAYMENTS:
-        return this.showPayments(ctx);
+        return this.showPayments(ctx, groupId);
+      case BTN.SWITCH_GROUP:
+        return this.showGroupSwitcher(ctx);
     }
   }
 
-  private async showPayments(ctx: Context) {
-    const students = await this.users.listByRole('student');
+  private async showGroupSwitcher(ctx: Context) {
+    const groups = await this.courseGroups.list();
+    if (!groups.length) {
+      await ctx.reply("📭 Hali birorta guruh yo'q. Mini app orqali yangi guruh yarating.");
+      return;
+    }
+    const chatId = String(ctx.chat!.id);
+    const activeId = await this.getActiveGroupId(chatId);
+    const kb = new InlineKeyboard();
+    for (const g of groups) {
+      const mark = g.id === activeId ? '✅ ' : '';
+      kb.text(`${mark}${g.name}`, `group:switch:${g.id}`).row();
+    }
+    await ctx.reply('🔀 Qaysi guruh bilan ishlaysiz?\n\n(Yangi guruh yaratish — mini app orqali)', {
+      reply_markup: kb,
+    });
+  }
+
+  private async showPayments(ctx: Context, groupId: number) {
+    const students = await this.users.listByRole('student', groupId);
     if (!students.length) {
       await ctx.reply("📭 Hali o'quvchilar yo'q.");
       return;
@@ -121,13 +165,14 @@ export class AdminHandler {
         await ctx.reply("❌ Format noto'g'ri. Masalan: 15:30");
         return;
       }
-      await this.lessons.setTime(todayDayOfWeek(), text);
+      await this.lessons.setTime(st.groupId, todayDayOfWeek(), text);
       this.state.clear(chatId);
       await ctx.reply(`✅ Bugungi dars ${text} ga o'rnatildi. O'quvchilarga xabar yuborilmoqda...`, {
         reply_markup: adminMenu(),
       });
       await this.broadcastToStudents(
         ctx.api,
+        st.groupId,
         `📚 Bugun darsimiz bor!\n🕐 Soat ${text} da boshlanadi. Tayyor bo'ling 💪`,
       );
       await ctx.reply("📨 O'quvchilarga xabar yuborildi.");
@@ -185,7 +230,7 @@ export class AdminHandler {
         await ctx.reply("❌ Format noto'g'ri. Masalan: 18:30");
         return;
       }
-      await this.lessons.setTime(st.dow, text);
+      await this.lessons.setTime(st.groupId, st.dow, text);
       this.state.clear(chatId);
       await ctx.reply(`✅ ${DAY_NAMES[st.dow]} darsi ${text} ga o'rnatildi.`, {
         reply_markup: adminMenu(),
@@ -210,13 +255,15 @@ export class AdminHandler {
         this.state.set(chatId, { ...st, step: 'task_desc', reward });
         await ctx.reply('📄 Vazifa shartini (tavsifini) yozing:');
       } else {
+        const groupId = await this.getActiveGroupId(chatId);
         const task = await this.tasks.create({
+          groupId,
           type: 'quiz',
           title: st.title,
           coinReward: reward,
           isActive: false,
         });
-        this.state.set(chatId, { step: 'quiz_q', taskId: task.id, count: 0 });
+        this.state.set(chatId, { step: 'quiz_q', taskId: task.id, count: 0, groupId });
         await ctx.reply(
           '❓ Endi savollarni yuboring. Har bir savol shu formatda, bitta xabarda:\n\n' +
             'Savol matni\nA) birinchi variant\nB) ikkinchi variant\nC) uchinchi variant\nD) to‘rtinchi variant\nJavob: B\n\n' +
@@ -228,7 +275,9 @@ export class AdminHandler {
     }
 
     if (st.step === 'task_desc' && text) {
+      const groupId = await this.getActiveGroupId(chatId);
       const task = await this.tasks.create({
+        groupId,
         type: 'assignment',
         title: st.title,
         description: text,
@@ -240,6 +289,7 @@ export class AdminHandler {
       });
       await this.broadcastToStudents(
         ctx.api,
+        groupId,
         `🎯 Yangi vazifa: ${task.title}\n\n${text}\n\n💰 Mukofot: ${task.coinReward} coin\n\n«${BTN.TASKS}» bo'limidan topshiring!`,
       );
       return;
@@ -259,6 +309,7 @@ export class AdminHandler {
         });
         await this.broadcastToStudents(
           ctx.api,
+          st.groupId,
           `🎯 Yangi test: ${task!.title} (${st.count} ta savol)\n💰 Mukofot: ${task!.coinReward} coin gacha\n\n«${BTN.TASKS}» bo'limidan ishlang!`,
         );
         return;
@@ -293,10 +344,7 @@ export class AdminHandler {
       await ctx.reply(`✅ Coinshopga qo'shildi: ${item.name} — ${item.price} coin`, {
         reply_markup: adminMenu(),
       });
-      await this.broadcastToStudents(
-        ctx.api,
-        `🛍 Coinshopda yangi sovg'a: ${item.name} — ${item.price} coin!`,
-      );
+      await this.broadcastToAllStudents(ctx.api, `🛍 Coinshopda yangi sovg'a: ${item.name} — ${item.price} coin!`);
       return;
     }
   }
@@ -349,8 +397,8 @@ export class AdminHandler {
     }
   }
 
-  private async showStudents(ctx: Context) {
-    const students = await this.users.listByRole('student');
+  private async showStudents(ctx: Context, groupId: number) {
+    const students = await this.users.listByRole('student', groupId);
     if (!students.length) {
       await ctx.reply("📭 Hali o'quvchilar yo'q.");
       return;
@@ -413,20 +461,20 @@ export class AdminHandler {
     }
   }
 
-  private async showSchedule(ctx: Context) {
-    const rows = await this.lessons.getSchedule();
+  private async showSchedule(ctx: Context, groupId: number) {
+    const rows = await this.lessons.getSchedule(groupId);
     const kb = new InlineKeyboard();
     let msg = '🕐 Dars jadvali (Toshkent vaqti):\n\n';
     for (const r of rows) {
       msg += `${DAY_NAMES[r.dayOfWeek]} — ${r.lessonTime}\n`;
-      kb.text(`✏️ ${DAY_NAMES[r.dayOfWeek]}`, `sched:${r.dayOfWeek}`).row();
+      kb.text(`✏️ ${DAY_NAMES[r.dayOfWeek]}`, `sched:${groupId}:${r.dayOfWeek}`).row();
     }
     msg += "\nVaqtni o'zgartirish uchun kunni tanlang:";
     await ctx.reply(msg, { reply_markup: kb });
   }
 
-  private async showSubmissions(ctx: Context) {
-    const rows = await this.tasks.pendingSubmissions();
+  private async showSubmissions(ctx: Context, groupId: number) {
+    const rows = await this.tasks.pendingSubmissions(groupId);
     if (!rows.length) {
       await ctx.reply("📭 Tekshirilmagan topshiriqlar yo'q.");
       return;
@@ -465,7 +513,7 @@ export class AdminHandler {
   private async showShopAdmin(ctx: Context) {
     const items = await this.shop.listActive();
     const kb = new InlineKeyboard();
-    let msg = '🛍 Coinshop sovg‘alari:\n\n';
+    let msg = '🛍 Coinshop sovg‘alari (barcha guruhlar uchun umumiy):\n\n';
     if (!items.length) msg += "(hozircha bo'sh)\n";
     for (const item of items) {
       msg += `• ${item.name} — ${item.price} coin\n`;
@@ -487,8 +535,8 @@ export class AdminHandler {
     }
   }
 
-  private async showReport(ctx: Context) {
-    const students = await this.users.listByRole('student');
+  private async showReport(ctx: Context, groupId: number) {
+    const students = await this.users.listByRole('student', groupId);
     if (!students.length) {
       await ctx.reply("📭 Hali o'quvchilar yo'q.");
       return;
@@ -516,20 +564,35 @@ export class AdminHandler {
       return this.handleDeleteStudent(ctx, data);
     }
 
-    if (data === 'lessonend:start') {
-      if (!(await this.lessons.scheduleForDay(todayDayOfWeek()))) {
+    if (data.startsWith('group:switch:')) {
+      const groupId = parseInt(data.split(':')[2], 10);
+      const group = await this.courseGroups.byId(groupId);
+      if (!group) {
+        await ctx.answerCallbackQuery({ text: 'Guruh topilmadi' });
+        return;
+      }
+      await this.settings.set(`active_group:${chatId}`, String(groupId));
+      await ctx.answerCallbackQuery({ text: `Tanlandi: ${group.name}` });
+      await ctx.editMessageText(`✅ Joriy guruh: «${group.name}»`).catch(() => undefined);
+      return;
+    }
+
+    if (data.startsWith('lessonend:start:')) {
+      const groupId = parseInt(data.split(':')[2], 10);
+      if (!(await this.lessons.scheduleForDay(groupId, todayDayOfWeek()))) {
         await ctx.answerCallbackQuery({ text: 'Bugun dars kuni emas!', show_alert: true });
         return;
       }
       await ctx.answerCallbackQuery();
       await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
-      await this.finalizeLesson(ctx);
+      await this.finalizeLesson(ctx, groupId);
       return;
     }
 
     // Ertalabki dars vaqti tasdig'i
-    if (data === 'daytime:ok') {
-      const sched = await this.lessons.scheduleForDay(todayDayOfWeek());
+    if (data.startsWith('daytime:ok:')) {
+      const groupId = parseInt(data.split(':')[2], 10);
+      const sched = await this.lessons.scheduleForDay(groupId, todayDayOfWeek());
       if (!sched) {
         await ctx.answerCallbackQuery({ text: 'Bugun dars kuni emas' });
         return;
@@ -538,14 +601,16 @@ export class AdminHandler {
       await ctx.editMessageText(`✅ Tasdiqlandi: bugun ${sched.lessonTime} da dars. O'quvchilarga xabar yuborilmoqda...`).catch(() => undefined);
       await this.broadcastToStudents(
         ctx.api,
+        groupId,
         `📚 Bugun darsimiz bor!\n🕐 Soat ${sched.lessonTime} da boshlanadi. Tayyor bo'ling 💪`,
       );
       await ctx.reply("📨 O'quvchilarga xabar yuborildi.");
       return;
     }
 
-    if (data === 'daytime:edit') {
-      this.state.set(chatId, { step: 'daytime_time' });
+    if (data.startsWith('daytime:edit:')) {
+      const groupId = parseInt(data.split(':')[2], 10);
+      this.state.set(chatId, { step: 'daytime_time', groupId });
       await ctx.answerCallbackQuery();
       await ctx.reply('🕐 Bugungi dars vaqtini kiriting (masalan 15:30):', {
         reply_markup: cancelKeyboard(),
@@ -575,8 +640,10 @@ export class AdminHandler {
     }
 
     if (data.startsWith('sched:')) {
-      const dow = parseInt(data.split(':')[1], 10);
-      this.state.set(chatId, { step: 'sched_time', dow });
+      const [, groupIdStr, dowStr] = data.split(':');
+      const groupId = parseInt(groupIdStr, 10);
+      const dow = parseInt(dowStr, 10);
+      this.state.set(chatId, { step: 'sched_time', groupId, dow });
       await ctx.answerCallbackQuery();
       await ctx.reply(`${DAY_NAMES[dow]} uchun yangi vaqtni kiriting (masalan 18:30):`, {
         reply_markup: cancelKeyboard(),
@@ -621,11 +688,11 @@ export class AdminHandler {
   }
 
   /** Bugungi darsni yakunlash: davomat + to'lov */
-  async finalizeLesson(ctx: { api: Api; reply?: any } & Context) {
+  async finalizeLesson(ctx: { api: Api; reply?: any } & Context, groupId: number) {
     const dateStr = todayDate();
-    const lesson = await this.lessons.ensureLessonForDate(dateStr);
-    const n = await this.lessons.lessonNumber(lesson);
-    const students = await this.users.listByRole('student');
+    const lesson = await this.lessons.ensureLessonForDate(groupId, dateStr);
+    const n = await this.lessons.lessonNumber(groupId, lesson);
+    const students = await this.users.listByRole('student', groupId);
     if (!students.length) {
       await ctx.reply("📭 O'quvchilar yo'q.");
       return;
@@ -759,8 +826,8 @@ export class AdminHandler {
     const st = this.state.get(chatId);
 
     if (data === 'hw:cancel') {
+      if (st?.groupId != null) await this.settings.set(`homework_pending:${st.groupId}`, '');
       this.state.clear(chatId);
-      await this.settings.set('homework_pending', '');
       await ctx.answerCallbackQuery({ text: 'Bekor qilindi' });
       await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
       return;
@@ -783,32 +850,39 @@ export class AdminHandler {
       await ctx.answerCallbackQuery({ text: 'Sessiya eskirgan. Qaytadan yozing.' });
       return;
     }
-    const groupId = await this.settings.get('group_chat_id');
-    if (!groupId) {
+    const group = st.groupId != null ? await this.courseGroups.byId(st.groupId as number) : undefined;
+    if (!group?.telegramChatId) {
       await ctx.answerCallbackQuery();
       await ctx.reply(
-        "❌ Guruh hali ulanmagan!\n\nO'quvchilar guruhida (bot admin bo'lgan guruhda) «/guruh» deb yozing — men uni eslab qolaman. Keyin shu tugmani qayta bosing.",
+        `❌ «${group?.name ?? 'Guruh'}» uchun Telegram e'lon chati ulanmagan!\n\nMini app orqali guruh sozlamalaridan chatni bog'lang. Keyin shu tugmani qayta bosing.`,
       );
       return;
     }
     try {
-      await ctx.api.sendMessage(groupId, this.formatHomework(st.lessonNumber as number, st.text as string), {
+      await ctx.api.sendMessage(group.telegramChatId, this.formatHomework(st.lessonNumber as number, st.text as string), {
         parse_mode: 'HTML',
       });
     } catch {
       await ctx.answerCallbackQuery();
-      await ctx.reply("❌ Guruhga yuborib bo'lmadi. Bot guruhda admin ekanini tekshiring, so'ng guruhda «/guruh» deb qayta ulang.");
+      await ctx.reply("❌ Guruhga yuborib bo'lmadi. Bot guruhda admin ekanini tekshiring.");
       return;
     }
+    if (st.groupId != null) await this.settings.set(`homework_pending:${st.groupId}`, '');
     this.state.clear(chatId);
-    await this.settings.set('homework_pending', '');
     await ctx.answerCallbackQuery({ text: 'Yuborildi ✅' });
     await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
     await ctx.reply('✅ Uyga vazifa guruhga yuborildi!');
   }
 
   // ── Yordamchilar ────────────────────────────────────────────────────────────
-  async broadcastToStudents(api: Api, text: string) {
+  async broadcastToStudents(api: Api, groupId: number, text: string) {
+    const students = await this.users.listByRole('student', groupId);
+    for (const s of students) {
+      await api.sendMessage(s.telegramId, text).catch(() => undefined);
+    }
+  }
+
+  async broadcastToAllStudents(api: Api, text: string) {
     const students = await this.users.listByRole('student');
     for (const s of students) {
       await api.sendMessage(s.telegramId, text).catch(() => undefined);

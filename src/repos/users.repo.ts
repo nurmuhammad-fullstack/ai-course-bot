@@ -40,8 +40,15 @@ export class UsersRepo {
     await this.db.update(users).set({ role }).where(eq(users.id, id));
   }
 
-  async listByRole(role: string): Promise<User[]> {
-    return this.db.select().from(users).where(eq(users.role, role)).orderBy(users.name);
+  async setGroup(id: number, groupId: number) {
+    await this.db.update(users).set({ groupId }).where(eq(users.id, id));
+  }
+
+  async listByRole(role: string, groupId?: number): Promise<User[]> {
+    const where = groupId != null
+      ? and(eq(users.role, role), eq(users.groupId, groupId))
+      : eq(users.role, role);
+    return this.db.select().from(users).where(where).orderBy(users.name);
   }
 
   async remove(id: number) {

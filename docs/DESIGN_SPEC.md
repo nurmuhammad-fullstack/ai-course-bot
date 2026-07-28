@@ -40,6 +40,9 @@ Foydalanuvchi bergan mockup (mobil task-manager: ko'k header-karta, kun chiplari
 - Pastda bottom-nav (oq, radius 24px yuqori burchaklar, soyali): rolga qarab tablar
 - SPA: bitta `index.html`, vanilla JS, `styles.css`, `app.js` — build talab qilinmasin
 
+### Guruh switcher (admin, multi-guruh)
+Bottom-nav ustida, `shop` tabidan tashqari barcha admin ekranlarida ko'rinadigan kichik pill: yumshoq yashil fon (`--primary-soft`), qorong'i yashil matn (`--primary-dark`), radius 999px, ichida users-ikonka + joriy guruh nomi + kichik chevron (90° burilgan). Bosilganda bottom-sheet ochiladi: guruhlar ro'yxati (kategoriya-karta, tanlangani ✅ belgi bilan, narx/dars soni pastki matnda) + pastda «➕ Yangi guruh yaratish» tugmasi (yashil-soft), bosilganda formaga (nom, narx, dars soni) ochiladi. Shop bo'limi guruhdan mustaqil bo'lgani uchun switcher u yerda ko'rsatilmaydi.
+
 ### Admin tablar: Bosh / O'quvchilar / Vazifalar / Shop / Inbox
 1. **Bosh**: header-kartada bugungi kun + «Bugun dars bor/yo'q, 18:00» + «Darsni yakunlash» pill. Ostida kun chiplari (Du..Ya, dars kunlari belgilangan; chipni bosib vaqtni tahrirlash — kichik modal/inline input). Ostida «Inbox» hisoblagichlari (zaproslar N, topshiriqlar N, buyurtmalar N) kategoriya-karta ko'rinishida.
 2. **O'quvchilar**: har biri kategoriya-karta: ism, coin, qoldiq (`800 000 so'm · 8 dars`), davomat (✅3 ❌1 — matn sifatida, emoji emas, kichik SVG + raqam). Bosilganda batafsil (davomat tarixi).

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Context, InlineKeyboard } from 'grammy';
 import { UsersRepo } from '../../repos/users.repo';
 import { PaymentsRepo } from '../../repos/payments.repo';
+import { CourseGroupsRepo } from '../../repos/course-groups.repo';
 import { StateStore } from '../state';
 import { parentMenu, phoneRequestKeyboard, studentMenu } from '../keyboards';
 
@@ -13,6 +14,7 @@ export class RegistrationHandler {
   constructor(
     private readonly users: UsersRepo,
     private readonly payments: PaymentsRepo,
+    private readonly courseGroups: CourseGroupsRepo,
     private readonly state: StateStore,
     config: ConfigService,
   ) {
@@ -96,14 +98,29 @@ export class RegistrationHandler {
     }
 
     if (action === 'st') {
-      await this.users.setRole(userId, 'student');
-      await this.payments.ensure(userId);
-      await ctx.editMessageText(`✅ ${user.name} — o'quvchi sifatida tasdiqlandi.`);
-      await ctx.api.sendMessage(
-        user.telegramId,
-        "🎉 Tabriklaymiz! Siz o'quvchi sifatida tasdiqlandingiz.\n\nQuyidagi menyudan foydalaning:",
-        { reply_markup: studentMenu() },
+      const groups = await this.courseGroups.list();
+      if (!groups.length) {
+        await ctx.answerCallbackQuery({ text: "Hali birorta guruh yo'q. Avval mini app orqali guruh yarating.", show_alert: true });
+        return;
+      }
+      if (groups.length === 1) {
+        await this.approveStudent(ctx, user, groups[0].id);
+        return;
+      }
+      const kb = new InlineKeyboard();
+      for (const g of groups) {
+        kb.text(g.name, `reg:stg:${userId}:${g.id}`).row();
+      }
+      await ctx.editMessageText(
+        `👨‍🎓 ${user.name} qaysi guruhga qo'shiladi?`,
+        { reply_markup: kb },
       );
+      return;
+    }
+
+    if (action === 'stg') {
+      const groupId = parseInt(extraStr, 10);
+      await this.approveStudent(ctx, user, groupId);
       return;
     }
 
@@ -156,5 +173,22 @@ export class RegistrationHandler {
       ).catch(() => undefined);
       return;
     }
+  }
+
+  private async approveStudent(ctx: Context, user: { id: number; telegramId: string; name: string | null }, groupId: number) {
+    const group = await this.courseGroups.byId(groupId);
+    if (!group) {
+      await ctx.answerCallbackQuery({ text: 'Guruh topilmadi' });
+      return;
+    }
+    await this.users.setRole(user.id, 'student');
+    await this.users.setGroup(user.id, groupId);
+    await this.payments.ensure(user.id, groupId);
+    await ctx.editMessageText(`✅ ${user.name} — «${group.name}» guruhiga o'quvchi sifatida tasdiqlandi.`);
+    await ctx.api.sendMessage(
+      user.telegramId,
+      "🎉 Tabriklaymiz! Siz o'quvchi sifatida tasdiqlandingiz.\n\nQuyidagi menyudan foydalaning:",
+      { reply_markup: studentMenu() },
+    );
   }
 }

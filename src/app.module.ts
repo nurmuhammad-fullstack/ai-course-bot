@@ -11,6 +11,7 @@ import { TasksRepo } from './repos/tasks.repo';
 import { ShopRepo } from './repos/shop.repo';
 import { SettingsRepo } from './repos/settings.repo';
 import { GroupsRepo } from './repos/groups.repo';
+import { CourseGroupsRepo } from './repos/course-groups.repo';
 import { StateStore } from './bot/state';
 import { RegistrationHandler } from './bot/handlers/registration.handler';
 import { AdminHandler } from './bot/handlers/admin.handler';
@@ -40,6 +41,7 @@ import { UserController } from './webapp/user.controller';
     ShopRepo,
     SettingsRepo,
     GroupsRepo,
+    CourseGroupsRepo,
     StateStore,
     RegistrationHandler,
     AdminHandler,

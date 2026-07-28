@@ -8,10 +8,12 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { DAY_NAMES, parseTime, todayDate, todayDayOfWeek } from '../bot/format';
 import { CoinsRepo } from '../repos/coins.repo';
+import { CourseGroupsRepo } from '../repos/course-groups.repo';
 import { LessonsRepo } from '../repos/lessons.repo';
 import { PaymentsRepo } from '../repos/payments.repo';
 import { ShopRepo } from '../repos/shop.repo';
@@ -41,6 +43,7 @@ export class AdminController {
     private readonly shop: ShopRepo,
     private readonly notify: NotifyService,
     private readonly lessonFlow: LessonFlowService,
+    private readonly courseGroups: CourseGroupsRepo,
   ) {}
 
   private async pendingRequests() {
@@ -48,16 +51,86 @@ export class AdminController {
     return pending.filter((u) => u.name && u.phone);
   }
 
+  /** Query'da groupId kelmasa — birinchi faol guruh ("Asosiy guruh") ga tushadi */
+  private async resolveGroupId(groupId?: number): Promise<number> {
+    if (groupId != null && Number.isInteger(groupId)) return groupId;
+    const groups = await this.courseGroups.list();
+    if (!groups.length) throw new BadRequestException("Hali birorta guruh yo'q");
+    return groups[0].id;
+  }
+
+  // ── Guruhlar ────────────────────────────────────────────────────────────────
+  @Get('groups')
+  async listGroups() {
+    return this.courseGroups.list();
+  }
+
+  @Post('groups')
+  async createGroup(
+    @Body()
+    body: { name?: string; totalPrice?: number; lessonsCount?: number; telegramChatId?: string },
+  ) {
+    const name = body?.name?.trim();
+    const totalPrice = Number(body?.totalPrice);
+    const lessonsCount = Number(body?.lessonsCount);
+    if (!name || name.length > 100) throw new BadRequestException("Noto'g'ri guruh nomi");
+    if (!Number.isInteger(totalPrice) || totalPrice <= 0) {
+      throw new BadRequestException("Noto'g'ri narx");
+    }
+    if (!Number.isInteger(lessonsCount) || lessonsCount <= 0 || lessonsCount > 100) {
+      throw new BadRequestException("Noto'g'ri dars soni");
+    }
+    const group = await this.courseGroups.create({
+      name,
+      totalPrice,
+      lessonsCount,
+      telegramChatId: body?.telegramChatId?.trim() || null,
+    });
+    await this.lessons.seedSchedule(group.id);
+    return group;
+  }
+
+  @Put('groups/:id')
+  async updateGroup(
+    @Param('id', ParseIntPipe) id: number,
+    @Body()
+    body: { name?: string; totalPrice?: number; lessonsCount?: number; telegramChatId?: string | null },
+  ) {
+    const group = await this.courseGroups.byId(id);
+    if (!group) throw new NotFoundException('Guruh topilmadi');
+    const patch: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      const name = body.name.trim();
+      if (!name || name.length > 100) throw new BadRequestException("Noto'g'ri guruh nomi");
+      patch.name = name;
+    }
+    if (body.totalPrice !== undefined) {
+      const totalPrice = Number(body.totalPrice);
+      if (!Number.isInteger(totalPrice) || totalPrice <= 0) throw new BadRequestException("Noto'g'ri narx");
+      patch.totalPrice = totalPrice;
+    }
+    if (body.lessonsCount !== undefined) {
+      const lessonsCount = Number(body.lessonsCount);
+      if (!Number.isInteger(lessonsCount) || lessonsCount <= 0) throw new BadRequestException("Noto'g'ri dars soni");
+      patch.lessonsCount = lessonsCount;
+    }
+    if (body.telegramChatId !== undefined) {
+      patch.telegramChatId = body.telegramChatId?.trim() || null;
+    }
+    return this.courseGroups.update(id, patch);
+  }
+
   // ── Bosh sahifa ─────────────────────────────────────────────────────────────
   @Get('home')
-  async home() {
+  async home(@Query('groupId') groupIdRaw?: string) {
+    const groupId = await this.resolveGroupId(groupIdRaw ? Number(groupIdRaw) : undefined);
     const dayOfWeek = todayDayOfWeek();
-    const todaySchedule = await this.lessons.scheduleForDay(dayOfWeek);
-    const schedule = await this.lessons.getSchedule();
+    const todaySchedule = await this.lessons.scheduleForDay(groupId, dayOfWeek);
+    const schedule = await this.lessons.getSchedule(groupId);
     const requests = await this.pendingRequests();
-    const submissions = await this.tasks.pendingSubmissions();
+    const submissions = await this.tasks.pendingSubmissions(groupId);
     const orders = await this.shop.pendingOrders();
-    const students = await this.users.listByRole('student');
+    const students = await this.users.listByRole('student', groupId);
     const totalCoins = await this.coins.totalBalance();
     return {
       today: {
@@ -78,25 +151,29 @@ export class AdminController {
   }
 
   @Put('schedule')
-  async setSchedule(@Body() body: { dayOfWeek?: number; lessonTime?: string }) {
+  async setSchedule(
+    @Body() body: { groupId?: number; dayOfWeek?: number; lessonTime?: string },
+  ) {
+    const groupId = await this.resolveGroupId(body?.groupId);
     const dayOfWeek = Number(body?.dayOfWeek);
     if (!Number.isInteger(dayOfWeek) || !body?.lessonTime || !parseTime(body.lessonTime)) {
       throw new BadRequestException("Noto'g'ri jadval ma'lumoti");
     }
-    await this.lessons.setTime(dayOfWeek, body.lessonTime.trim());
+    await this.lessons.setTime(groupId, dayOfWeek, body.lessonTime.trim());
     return { ok: true };
   }
 
   // ── Dars / davomat ──────────────────────────────────────────────────────────
   @Post('lesson/finish')
-  async finishLesson() {
-    const sched = await this.lessons.scheduleForDay(todayDayOfWeek());
+  async finishLesson(@Body() body: { groupId?: number }) {
+    const groupId = await this.resolveGroupId(body?.groupId);
+    const sched = await this.lessons.scheduleForDay(groupId, todayDayOfWeek());
     if (!sched) {
       throw new BadRequestException("Bugun dars kuni emas — darsni yakunlab bo'lmaydi");
     }
-    const lesson = await this.lessons.ensureLessonForDate(todayDate());
-    const lessonNumber = await this.lessons.lessonNumber(lesson);
-    const students = await this.users.listByRole('student');
+    const lesson = await this.lessons.ensureLessonForDate(groupId, todayDate());
+    const lessonNumber = await this.lessons.lessonNumber(groupId, lesson);
+    const students = await this.users.listByRole('student', groupId);
     const att = await this.lessons.attendanceForLesson(lesson.id);
     return {
       lessonId: lesson.id,
@@ -142,14 +219,16 @@ export class AdminController {
   @Post('requests/:id')
   async decideRequest(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { action?: string; studentId?: number },
+    @Body() body: { action?: string; studentId?: number; groupId?: number },
   ) {
     const user = await this.users.byId(id);
     if (!user) throw new NotFoundException('Zapros topilmadi');
 
     if (body?.action === 'student') {
+      const groupId = await this.resolveGroupId(body?.groupId);
       await this.users.setRole(user.id, 'student');
-      await this.payments.ensure(user.id);
+      await this.users.setGroup(user.id, groupId);
+      await this.payments.ensure(user.id, groupId);
       await this.notify.send(
         user.telegramId,
         "🎉 Tabriklaymiz! Siz o'quvchi sifatida tasdiqlandingiz.\n\nMenyu ochilishi uchun botga /start yozing.",
@@ -187,8 +266,11 @@ export class AdminController {
 
   // ── O'quvchilar ─────────────────────────────────────────────────────────────
   @Get('students')
-  async students() {
-    const students = await this.users.listByRole('student');
+  async students(@Query('groupId') groupIdRaw?: string, @Query('allGroups') allGroups?: string) {
+    const groupId = allGroups === '1'
+      ? undefined
+      : await this.resolveGroupId(groupIdRaw ? Number(groupIdRaw) : undefined);
+    const students = await this.users.listByRole('student', groupId);
     const result = [];
     for (const s of students) {
       const [coins, pay, att, parents] = await Promise.all([
@@ -297,8 +379,9 @@ export class AdminController {
 
   // ── Vazifalar ───────────────────────────────────────────────────────────────
   @Get('tasks')
-  async listTasks() {
-    const tasks = await this.tasks.listActive();
+  async listTasks(@Query('groupId') groupIdRaw?: string) {
+    const groupId = await this.resolveGroupId(groupIdRaw ? Number(groupIdRaw) : undefined);
+    const tasks = await this.tasks.listActive(groupId);
     const result = [];
     for (const t of tasks) {
       const questions = t.type === 'quiz' ? await this.tasks.questions(t.id) : [];
@@ -318,6 +401,7 @@ export class AdminController {
   async createTask(
     @Body()
     body: {
+      groupId?: number;
       type?: string;
       title?: string;
       description?: string;
@@ -325,6 +409,7 @@ export class AdminController {
       questions?: { question?: string; options?: string[]; correctIndex?: number }[];
     },
   ) {
+    const groupId = await this.resolveGroupId(body?.groupId);
     const coinReward = Number(body?.coinReward);
     if (!body?.title?.trim() || !Number.isInteger(coinReward) || coinReward <= 0) {
       throw new BadRequestException("Noto'g'ri vazifa ma'lumoti");
@@ -346,6 +431,7 @@ export class AdminController {
 
     if (body.type === 'assignment') {
       const task = await this.tasks.create({
+        groupId,
         type: 'assignment',
         title: body.title.trim(),
         description: body.description?.trim(),
@@ -374,6 +460,7 @@ export class AdminController {
         throw new BadRequestException("Noto'g'ri test savollari");
       }
       const task = await this.tasks.create({
+        groupId,
         type: 'quiz',
         title: body.title.trim(),
         coinReward,
@@ -398,8 +485,9 @@ export class AdminController {
 
   // ── Topshiriqlar ────────────────────────────────────────────────────────────
   @Get('submissions')
-  async submissions() {
-    const rows = await this.tasks.pendingSubmissions();
+  async submissions(@Query('groupId') groupIdRaw?: string) {
+    const groupId = groupIdRaw ? Number(groupIdRaw) : undefined;
+    const rows = await this.tasks.pendingSubmissions(groupId);
     return rows.map(({ submission, task, student }) => ({
       id: submission.id,
       taskTitle: task.title,
@@ -444,7 +532,7 @@ export class AdminController {
     throw new BadRequestException("Noto'g'ri action");
   }
 
-  // ── Coinshop ────────────────────────────────────────────────────────────────
+  // ── Coinshop (umumiy, guruhdan mustaqil) ─────────────────────────────────────
   @Get('shop')
   async shopOverview() {
     const items = await this.shop.listActive();

@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Api, Bot, Context } from 'grammy';
-import { LessonsRepo } from '../repos/lessons.repo';
 import { SettingsRepo } from '../repos/settings.repo';
 import { UsersRepo } from '../repos/users.repo';
 import { GroupsRepo } from '../repos/groups.repo';
@@ -10,7 +9,7 @@ import { AdminHandler } from './handlers/admin.handler';
 import { StudentHandler } from './handlers/student.handler';
 import { ParentHandler } from './handlers/parent.handler';
 
-const ADMIN_CALLBACKS = /^(reg|att|lessonend|sched|taskadm|sub|shopadm|order|daytime|hw|payd|stu):/;
+const ADMIN_CALLBACKS = /^(reg|att|lessonend|sched|taskadm|sub|shopadm|order|daytime|hw|payd|stu|group):/;
 const STUDENT_CALLBACKS = /^(task|quiz|shop):/;
 
 @Injectable()
@@ -22,7 +21,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly users: UsersRepo,
-    private readonly lessons: LessonsRepo,
     private readonly settings: SettingsRepo,
     private readonly groups: GroupsRepo,
     private readonly registration: RegistrationHandler,
@@ -42,8 +40,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    await this.lessons.seedSchedule();
-
     this.bot = new Bot(this.config.getOrThrow<string>('BOT_TOKEN'));
 
     this.bot.on('callback_query:data', (ctx) => this.routeCallback(ctx));

@@ -210,7 +210,23 @@ const state = {
   profile: null,
   tab: 'home',
   view: null, // tab ichidagi ichki ekran: {name, data}
+  currentGroupId: null, // faqat admin uchun — tanlangan kurs-guruh
+  groups: [], // admin uchun mavjud guruhlar keshi
 };
+
+/* Admin API chaqiruvlariga avtomatik ?groupId= qo'shadi (yoki POST/PUT body'siga birlashtiradi) */
+function adminApi(path, opts) {
+  opts = opts || {};
+  const gid = state.currentGroupId;
+  if (gid == null) return api(path, opts);
+  const method = (opts.method || 'GET').toUpperCase();
+  if (method === 'GET') {
+    const sep = path.indexOf('?') === -1 ? '?' : '&';
+    return api(path + sep + 'groupId=' + gid, opts);
+  }
+  const body = Object.assign({}, opts.body || {}, { groupId: gid });
+  return api(path, Object.assign({}, opts, { body }));
+}
 
 /* ---------- Gate ekranlar ---------- */
 function renderGate(kind) {
@@ -291,6 +307,9 @@ function renderApp() {
   }
 
   const nav = renderNav();
+  if (role === 'admin' && state.tab !== 'shop') {
+    root.appendChild(renderGroupSwitcher());
+  }
   root.appendChild(skeletonScreen(3));
   if (nav) root.appendChild(nav);
 
@@ -299,6 +318,102 @@ function renderApp() {
     : { home: renderStudentHome, tasks: renderStudentTasks, shop: renderStudentShop };
 
   (renderers[state.tab] || renderers.home)();
+}
+
+/* Admin uchun joriy guruhni ko'rsatadigan/almashtiradigan kichik pill (shop tabida ko'rinmaydi — umumiy) */
+function renderGroupSwitcher() {
+  const current = state.groups.find((g) => g.id === state.currentGroupId);
+  const wrap = el(
+    '<button type="button" class="group-switcher">' +
+      icon('users', 15) +
+      '<span>' + (current ? esc(current.name) : "Guruh tanlang") + '</span>' +
+      icon('chevron', 15, 'gs-chevron') +
+    '</button>'
+  );
+  wrap.addEventListener('click', openGroupSwitcherSheet);
+  return wrap;
+}
+
+function openGroupSwitcherSheet() {
+  const content = el(
+    '<div>' +
+      '<h3>Guruhlar</h3>' +
+      '<div data-role="group-list"></div>' +
+      '<button type="button" class="btn btn-green-soft btn-block" data-act="new-group" style="margin-top:10px">' +
+        icon('plus', 16) + "Yangi guruh yaratish" +
+      '</button>' +
+    '</div>'
+  );
+  const close = openSheet(content);
+  const list = content.querySelector('[data-role="group-list"]');
+
+  function renderList() {
+    clear(list);
+    state.groups.forEach((g) => {
+      const active = g.id === state.currentGroupId;
+      const row = el(
+        '<button type="button" class="cat-card' + (active ? '' : ' static') + '" style="margin-bottom:8px">' +
+          '<div class="cc-icon">' + icon('users', 20) + '</div>' +
+          '<div class="cc-body"><div class="cc-title">' + esc(g.name) + (active ? ' ✅' : '') + '</div>' +
+            '<div class="cc-sub"><span>' + fmtMoney(g.totalPrice) + ' · ' + g.lessonsCount + ' dars</span></div></div>' +
+        '</button>'
+      );
+      row.addEventListener('click', () => {
+        state.currentGroupId = g.id;
+        localStorage.setItem('currentGroupId', g.id);
+        close();
+        renderApp();
+      });
+      list.appendChild(row);
+    });
+  }
+  renderList();
+
+  content.querySelector('[data-act="new-group"]').addEventListener('click', () => {
+    openCreateGroupForm(content, () => {
+      api('/api/admin/groups').then((groups) => {
+        state.groups = groups || [];
+        renderList();
+      });
+    });
+  });
+}
+
+function openCreateGroupForm(sheetContent, onCreated) {
+  const form = el(
+    '<div class="form-card" style="margin-top:12px">' +
+      '<h3>Yangi guruh</h3>' +
+      '<div class="field"><label for="ng-name">Nomi</label><input id="ng-name" type="text" placeholder="Masalan: Kechki guruh" /></div>' +
+      '<div class="field"><label for="ng-price">Kurs narxi (so’m)</label><input id="ng-price" type="number" inputmode="numeric" placeholder="1200000" /></div>' +
+      '<div class="field"><label for="ng-lessons">Dars soni</label><input id="ng-lessons" type="number" inputmode="numeric" placeholder="12" /></div>' +
+      '<button type="button" class="btn btn-primary btn-block" data-act="save">Yaratish</button>' +
+      '<div data-role="ng-msg"></div>' +
+    '</div>'
+  );
+  sheetContent.appendChild(form);
+  form.querySelector('[data-act="save"]').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const name = form.querySelector('#ng-name').value.trim();
+    const totalPrice = parseInt(form.querySelector('#ng-price').value, 10);
+    const lessonsCount = parseInt(form.querySelector('#ng-lessons').value, 10);
+    const box = form.querySelector('[data-role="ng-msg"]');
+    clear(box);
+    if (!name) { box.appendChild(el('<div class="err-msg">Nomini kiriting</div>')); return; }
+    if (!totalPrice || totalPrice <= 0) { box.appendChild(el('<div class="err-msg">Narxni kiriting</div>')); return; }
+    if (!lessonsCount || lessonsCount <= 0) { box.appendChild(el('<div class="err-msg">Dars sonini kiriting</div>')); return; }
+    setBusy(btn, true);
+    api('/api/admin/groups', { method: 'POST', body: { name, totalPrice, lessonsCount } })
+      .then((group) => {
+        form.remove();
+        state.currentGroupId = group.id;
+        localStorage.setItem('currentGroupId', group.id);
+        onCreated();
+      })
+      .catch((err) => {
+        setBusy(btn, false);
+        if (!err.silent) { clear(box); box.appendChild(el('<div class="err-msg">' + esc(err.message) + '</div>')); }
+      });
+  });
 }
 
 function mountScreen(screenEl) {
@@ -364,7 +479,7 @@ function renderAdminHome() {
   if (state.view && state.view.name === 'payments') { renderPaymentsView(); return; }
   if (state.view && state.view.name === 'inbox') { renderAdminInbox(); return; }
 
-  api('/api/admin/home').then((data) => {
+  adminApi('/api/admin/home').then((data) => {
     const s = el('<div class="screen"></div>');
     const t = data.today || {};
     const now = new Date();
@@ -477,7 +592,7 @@ function renderAdminHome() {
    ADMIN: TO'LOVLAR
    ========================================================= */
 function renderPaymentsView() {
-  api('/api/admin/students').then((students) => {
+  adminApi('/api/admin/students').then((students) => {
     const s = el('<div class="screen"></div>');
 
     const back = el('<button type="button" class="back-btn">' + icon('chevron', 18) + 'Orqaga</button>');
@@ -585,7 +700,7 @@ function openScheduleSheet(dow, currentTime) {
     if (!time) { showErr(content, 'Vaqtni kiriting'); return; }
     clearErr(content);
     setBusy(btn, true);
-    api('/api/admin/schedule', { method: 'PUT', body: { dayOfWeek: dow, lessonTime: time } })
+    adminApi('/api/admin/schedule', { method: 'PUT', body: { dayOfWeek: dow, lessonTime: time } })
       .then(() => { close(); renderAdminHome(); })
       .catch((e) => { setBusy(btn, false); if (!e.silent) showErr(content, e.message); });
   });
@@ -594,7 +709,7 @@ function openScheduleSheet(dow, currentTime) {
 /* --- Darsni yakunlash oqimi --- */
 function startFinishLesson(btn, container) {
   setBusy(btn, true);
-  api('/api/admin/lesson/finish', { method: 'POST', body: {} })
+  adminApi('/api/admin/lesson/finish', { method: 'POST', body: {} })
     .then((lesson) => {
       state.view = { name: 'finishLesson', data: lesson };
       renderFinishLesson();
@@ -676,7 +791,7 @@ function renderFinishLesson() {
    ADMIN: O'QUVCHILAR
    ========================================================= */
 function renderAdminStudents() {
-  api('/api/admin/students').then((students) => {
+  adminApi('/api/admin/students').then((students) => {
     const s = el('<div class="screen"></div>');
     s.appendChild(el(
       '<section class="header-card">' +
@@ -863,7 +978,7 @@ function openStudentSheet(st) {
 function renderAdminTasks() {
   if (state.view && state.view.name === 'taskCreate') { renderTaskCreate(); return; }
 
-  api('/api/admin/tasks').then((tasks) => {
+  adminApi('/api/admin/tasks').then((tasks) => {
     const s = el('<div class="screen"></div>');
     s.appendChild(el(
       '<section class="header-card">' +
@@ -1015,7 +1130,7 @@ function renderTaskCreate() {
     }
 
     setBusy(saveBtn, true);
-    api('/api/admin/tasks', { method: 'POST', body })
+    adminApi('/api/admin/tasks', { method: 'POST', body })
       .then(() => { state.view = null; renderApp(); })
       .catch((e) => { setBusy(saveBtn, false); if (!e.silent) showErr(form, e.message); });
   });
@@ -1162,7 +1277,7 @@ function openAddItemSheet() {
 function renderAdminInbox() {
   Promise.all([
     api('/api/admin/requests'),
-    api('/api/admin/submissions'),
+    adminApi('/api/admin/submissions'),
     api('/api/admin/shop'),
   ]).then(([requests, submissions, shopData]) => {
     const s = el('<div class="screen"></div>');
@@ -1208,7 +1323,7 @@ function renderAdminInbox() {
             if (!e.silent) showErr(card, e.message);
           });
       };
-      card.querySelector('[data-act="student"]').addEventListener('click', (e) => doAction(e.currentTarget, { action: 'student' }));
+      card.querySelector('[data-act="student"]').addEventListener('click', (e) => doAction(e.currentTarget, { action: 'student', groupId: state.currentGroupId }));
       card.querySelector('[data-act="reject"]').addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         const ok = await askConfirm('«' + r.name + '» so’rovini rad qilasizmi?');
@@ -1273,7 +1388,7 @@ function openStudentPicker(onPick) {
   const content = el('<div><h3>Qaysi o’quvchining ota-onasi?</h3><div data-role="list"><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div></div></div>');
   const close = openSheet(content);
   const list = content.querySelector('[data-role="list"]');
-  api('/api/admin/students').then((all) => {
+  api('/api/admin/students?allGroups=1').then((all) => {
     clear(list);
     const students = all.filter((st) => !st.hasParent);
     if (!students.length) {
@@ -1652,7 +1767,7 @@ function renderParent() {
       const att = ch.attendance || [];
       const attByDate = {};
       att.forEach((a) => { attByDate[a.lessonDate] = a.status; });
-      card.insertBefore(renderDayChips(data.schedule, attByDate), card.querySelector('.detail-list'));
+      card.insertBefore(renderDayChips(ch.schedule, attByDate), card.querySelector('.detail-list'));
 
       const list = card.querySelector('.detail-list');
       if (!att.length) {
@@ -1689,6 +1804,16 @@ function boot() {
       state.profile = profile;
       state.tab = 'home';
       state.view = null;
+      if (profile.role === 'admin') {
+        return api('/api/admin/groups').then((groups) => {
+          state.groups = groups || [];
+          const saved = parseInt(localStorage.getItem('currentGroupId'), 10);
+          const found = state.groups.find((g) => g.id === saved);
+          state.currentGroupId = found ? found.id : (state.groups[0] ? state.groups[0].id : null);
+          if (state.currentGroupId != null) localStorage.setItem('currentGroupId', state.currentGroupId);
+          renderApp();
+        });
+      }
       renderApp();
     })
     .catch((e) => {

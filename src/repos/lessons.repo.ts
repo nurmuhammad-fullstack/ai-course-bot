@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { SCHEDULE_DEFAULTS } from '../config';
 import { DRIZZLE, Db } from '../db/db.module';
 import { attendance, courseLessons, schedule } from '../db/schema';
@@ -10,36 +10,46 @@ export type CourseLesson = typeof courseLessons.$inferSelect;
 export class LessonsRepo {
   constructor(@Inject(DRIZZLE) private readonly db: Db) {}
 
-  async seedSchedule() {
+  async seedSchedule(groupId: number) {
     for (const row of SCHEDULE_DEFAULTS) {
-      await this.db.insert(schedule).values(row).onConflictDoNothing();
+      await this.db.insert(schedule).values({ groupId, ...row }).onConflictDoNothing();
     }
   }
 
-  async getSchedule() {
-    return this.db.select().from(schedule).orderBy(asc(schedule.dayOfWeek));
+  async getSchedule(groupId: number) {
+    return this.db
+      .select()
+      .from(schedule)
+      .where(eq(schedule.groupId, groupId))
+      .orderBy(asc(schedule.dayOfWeek));
   }
 
-  async scheduleForDay(dayOfWeek: number) {
-    const rows = await this.db.select().from(schedule).where(eq(schedule.dayOfWeek, dayOfWeek));
+  async scheduleForDay(groupId: number, dayOfWeek: number) {
+    const rows = await this.db
+      .select()
+      .from(schedule)
+      .where(and(eq(schedule.groupId, groupId), eq(schedule.dayOfWeek, dayOfWeek)));
     return rows[0];
   }
 
-  async setTime(dayOfWeek: number, lessonTime: string) {
-    await this.db.update(schedule).set({ lessonTime }).where(eq(schedule.dayOfWeek, dayOfWeek));
+  async setTime(groupId: number, dayOfWeek: number, lessonTime: string) {
+    await this.db
+      .update(schedule)
+      .set({ lessonTime })
+      .where(and(eq(schedule.groupId, groupId), eq(schedule.dayOfWeek, dayOfWeek)));
   }
 
-  async ensureLessonForDate(lessonDate: string): Promise<CourseLesson> {
+  async ensureLessonForDate(groupId: number, lessonDate: string): Promise<CourseLesson> {
     const inserted = await this.db
       .insert(courseLessons)
-      .values({ lessonDate })
+      .values({ groupId, lessonDate })
       .onConflictDoNothing()
       .returning();
     if (inserted.length) return inserted[0];
     const [existing] = await this.db
       .select()
       .from(courseLessons)
-      .where(eq(courseLessons.lessonDate, lessonDate));
+      .where(and(eq(courseLessons.groupId, groupId), eq(courseLessons.lessonDate, lessonDate)));
     return existing;
   }
 
@@ -48,12 +58,17 @@ export class LessonsRepo {
     return rows[0];
   }
 
-  /** Dars tartib raqami (nechanchi dars) */
-  async lessonNumber(lesson: CourseLesson): Promise<number> {
+  /** Dars tartib raqami (nechanchi dars) — faqat shu guruh darslari sanaladi */
+  async lessonNumber(groupId: number, lesson: CourseLesson): Promise<number> {
     const [row] = await this.db
       .select({ n: sql<number>`count(*)::int` })
       .from(courseLessons)
-      .where(sql`${courseLessons.lessonDate} <= ${lesson.lessonDate}`);
+      .where(
+        and(
+          eq(courseLessons.groupId, groupId),
+          sql`${courseLessons.lessonDate} <= ${lesson.lessonDate}`,
+        ),
+      );
     return row?.n ?? 1;
   }
 

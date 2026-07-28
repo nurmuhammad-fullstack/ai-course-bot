@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
-import { COURSE } from '../config';
 import { DRIZZLE, Db } from '../db/db.module';
 import { paymentCharges, payments } from '../db/schema';
+import { CourseGroupsRepo } from './course-groups.repo';
 
 export interface PaymentStatus {
   total: number;
@@ -16,17 +16,24 @@ export interface PaymentStatus {
 
 @Injectable()
 export class PaymentsRepo {
-  constructor(@Inject(DRIZZLE) private readonly db: Db) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Db,
+    private readonly courseGroups: CourseGroupsRepo,
+  ) {}
 
-  async ensure(studentId: number) {
+  /** Talaba profilini yaratadi — narx guruhning joriy narxidan nusxalanadi (bir marta, keyin o'zgarmaydi) */
+  async ensure(studentId: number, groupId: number) {
+    const existing = await this.db.select().from(payments).where(eq(payments.studentId, studentId));
+    if (existing.length) return;
+    const group = await this.courseGroups.byId(groupId);
+    if (!group) throw new Error(`Guruh topilmadi: ${groupId}`);
     await this.db
       .insert(payments)
-      .values({ studentId, total: COURSE.TOTAL, lessonsCount: COURSE.LESSONS })
+      .values({ studentId, total: group.totalPrice, lessonsCount: group.lessonsCount })
       .onConflictDoNothing();
   }
 
   async status(studentId: number): Promise<PaymentStatus> {
-    await this.ensure(studentId);
     const [pay] = await this.db.select().from(payments).where(eq(payments.studentId, studentId));
     const [agg] = await this.db
       .select({
@@ -49,7 +56,6 @@ export class PaymentsRepo {
   }
 
   async setDueDay(studentId: number, dueDay: number | null) {
-    await this.ensure(studentId);
     await this.db.update(payments).set({ dueDay }).where(eq(payments.studentId, studentId));
   }
 

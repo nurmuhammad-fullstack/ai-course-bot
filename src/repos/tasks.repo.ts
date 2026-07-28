@@ -12,6 +12,7 @@ export class TasksRepo {
   constructor(@Inject(DRIZZLE) private readonly db: Db) {}
 
   async create(data: {
+    groupId: number;
     type: 'quiz' | 'assignment';
     title: string;
     description?: string;
@@ -35,11 +36,11 @@ export class TasksRepo {
     return rows[0];
   }
 
-  async listActive(): Promise<Task[]> {
+  async listActive(groupId: number): Promise<Task[]> {
     return this.db
       .select()
       .from(tasks)
-      .where(eq(tasks.isActive, true))
+      .where(and(eq(tasks.isActive, true), eq(tasks.groupId, groupId)))
       .orderBy(desc(tasks.createdAt));
   }
 
@@ -112,13 +113,16 @@ export class TasksRepo {
     await this.db.update(submissions).set({ status }).where(eq(submissions.id, id));
   }
 
-  async pendingSubmissions() {
+  async pendingSubmissions(groupId?: number) {
+    const where = groupId != null
+      ? and(eq(submissions.status, 'pending'), eq(tasks.groupId, groupId))
+      : eq(submissions.status, 'pending');
     return this.db
       .select({ submission: submissions, task: tasks, student: users })
       .from(submissions)
       .innerJoin(tasks, eq(submissions.taskId, tasks.id))
       .innerJoin(users, eq(submissions.studentId, users.id))
-      .where(eq(submissions.status, 'pending'))
+      .where(where)
       .orderBy(submissions.createdAt);
   }
 

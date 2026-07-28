@@ -57,7 +57,7 @@ export class UserController {
       this.coins.history(user.id),
       this.payments.status(user.id),
       this.lessons.attendanceForStudent(user.id),
-      this.lessons.getSchedule(),
+      this.lessons.getSchedule(user.groupId!),
     ]);
     return {
       name: user.name,
@@ -72,7 +72,7 @@ export class UserController {
   @Get('tasks')
   async listTasks(@TgUser() tgUser: User | null) {
     const user = this.requireStudent(tgUser);
-    const active = await this.tasks.listActive();
+    const active = await this.tasks.listActive(user.groupId!);
     const result = [];
     for (const task of active) {
       let status = 'new';
@@ -236,24 +236,22 @@ export class UserController {
   async parent(@TgUser() tgUser: User | null) {
     if (!tgUser || tgUser.role !== 'parent') throw new ForbiddenException('Faqat ota-ona uchun');
     const children = await this.users.childrenOfParent(tgUser.id);
-    const schedule = await this.lessons.getSchedule();
     const result = [];
     for (const child of children) {
-      const [pay, attendance, coins] = await Promise.all([
+      const [pay, attendance, coins, schedule] = await Promise.all([
         this.payments.status(child.id),
         this.lessons.attendanceForStudent(child.id),
         this.coins.balance(child.id),
+        child.groupId != null ? this.lessons.getSchedule(child.groupId) : Promise.resolve([]),
       ]);
       result.push({
         name: child.name,
         coins,
         pay,
         attendance: attendance.map((a) => ({ lessonDate: a.lessonDate, status: a.status })),
+        schedule: schedule.map((s) => ({ dayOfWeek: s.dayOfWeek, lessonTime: s.lessonTime })),
       });
     }
-    return {
-      children: result,
-      schedule: schedule.map((s) => ({ dayOfWeek: s.dayOfWeek, lessonTime: s.lessonTime })),
-    };
+    return { children: result };
   }
 }

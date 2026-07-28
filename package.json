@@ -9,7 +9,8 @@
     "start": "node dist/main.js",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "migrate:sqlite": "tsx scripts/migrate-sqlite.ts"
+    "migrate:sqlite": "tsx scripts/migrate-sqlite.ts",
+    "backfill:course-groups": "tsx scripts/backfill-course-groups.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

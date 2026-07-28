@@ -662,6 +662,24 @@ svg { display: block; flex-shrink: 0; }
 }
 .nav-btn.active { color: var(--primary); font-weight: 600; }
 
+/* ===== Guruh switcher (admin) ===== */
+.group-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto 12px;
+  padding: 8px 14px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: fit-content;
+  transition: background-color 200ms ease;
+}
+.group-switcher:active { background: var(--primary); color: #fff; }
+.group-switcher .gs-chevron { transform: rotate(90deg); opacity: 0.7; }
+
 /* ===== Bottom sheet & modal ===== */
 
 .sheet-backdrop {
