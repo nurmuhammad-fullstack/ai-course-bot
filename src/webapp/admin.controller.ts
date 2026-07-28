@@ -68,7 +68,13 @@ export class AdminController {
   @Post('groups')
   async createGroup(
     @Body()
-    body: { name?: string; totalPrice?: number; lessonsCount?: number; telegramChatId?: string },
+    body: {
+      name?: string;
+      totalPrice?: number;
+      lessonsCount?: number;
+      telegramChatId?: string;
+      schedule?: { dayOfWeek?: number; lessonTime?: string }[];
+    },
   ) {
     const name = body?.name?.trim();
     const totalPrice = Number(body?.totalPrice);
@@ -80,13 +86,30 @@ export class AdminController {
     if (!Number.isInteger(lessonsCount) || lessonsCount <= 0 || lessonsCount > 100) {
       throw new BadRequestException("Noto'g'ri dars soni");
     }
+
+    let scheduleRows: { dayOfWeek: number; lessonTime: string }[] | undefined;
+    if (body?.schedule?.length) {
+      if (body.schedule.length > 7) throw new BadRequestException("Dars kunlari ko'pi bilan 7 ta");
+      const seen = new Set<number>();
+      scheduleRows = body.schedule.map((r) => {
+        const dayOfWeek = Number(r?.dayOfWeek);
+        const lessonTime = r?.lessonTime?.trim();
+        if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6 || !lessonTime || !parseTime(lessonTime)) {
+          throw new BadRequestException("Noto'g'ri dars kuni/vaqti");
+        }
+        if (seen.has(dayOfWeek)) throw new BadRequestException("Bir xil kun ikki marta tanlangan");
+        seen.add(dayOfWeek);
+        return { dayOfWeek, lessonTime };
+      });
+    }
+
     const group = await this.courseGroups.create({
       name,
       totalPrice,
       lessonsCount,
       telegramChatId: body?.telegramChatId?.trim() || null,
     });
-    await this.lessons.seedSchedule(group.id);
+    await this.lessons.seedSchedule(group.id, scheduleRows);
     return group;
   }
 

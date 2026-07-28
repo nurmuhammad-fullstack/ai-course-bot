@@ -10,8 +10,11 @@ export type CourseLesson = typeof courseLessons.$inferSelect;
 export class LessonsRepo {
   constructor(@Inject(DRIZZLE) private readonly db: Db) {}
 
-  async seedSchedule(groupId: number) {
-    for (const row of SCHEDULE_DEFAULTS) {
+  async seedSchedule(
+    groupId: number,
+    rows: { dayOfWeek: number; lessonTime: string }[] = SCHEDULE_DEFAULTS,
+  ) {
+    for (const row of rows) {
       await this.db.insert(schedule).values({ groupId, ...row }).onConflictDoNothing();
     }
   }

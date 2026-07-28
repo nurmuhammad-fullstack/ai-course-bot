@@ -380,17 +380,61 @@ function openGroupSwitcherSheet() {
 }
 
 function openCreateGroupForm(sheetContent, onCreated) {
+  const order = [1, 2, 3, 4, 5, 6, 0]; // Du..Ya
+  const selectedDays = {}; // dayOfWeek -> "18:00"
+
   const form = el(
     '<div class="form-card" style="margin-top:12px">' +
       '<h3>Yangi guruh</h3>' +
       '<div class="field"><label for="ng-name">Nomi</label><input id="ng-name" type="text" placeholder="Masalan: Kechki guruh" /></div>' +
       '<div class="field"><label for="ng-price">Kurs narxi (so’m)</label><input id="ng-price" type="number" inputmode="numeric" placeholder="1200000" /></div>' +
       '<div class="field"><label for="ng-lessons">Dars soni</label><input id="ng-lessons" type="number" inputmode="numeric" placeholder="12" /></div>' +
+      '<div class="field"><label>Dars kunlari</label><div class="day-chips" data-role="ng-days"></div></div>' +
+      '<div data-role="ng-times"></div>' +
       '<button type="button" class="btn btn-primary btn-block" data-act="save">Yaratish</button>' +
       '<div data-role="ng-msg"></div>' +
     '</div>'
   );
   sheetContent.appendChild(form);
+
+  const daysWrap = form.querySelector('[data-role="ng-days"]');
+  const timesWrap = form.querySelector('[data-role="ng-times"]');
+
+  function renderTimes() {
+    clear(timesWrap);
+    order.filter((d) => selectedDays[d] != null).forEach((d) => {
+      const row = el(
+        '<div class="field" style="margin-top:8px">' +
+          '<label>' + esc(DAY_FULL[d]) + ' — boshlanish vaqti</label>' +
+          '<input type="time" value="' + esc(selectedDays[d]) + '" data-day="' + d + '" />' +
+        '</div>'
+      );
+      row.querySelector('input').addEventListener('input', (e) => {
+        selectedDays[d] = e.target.value;
+      });
+      timesWrap.appendChild(row);
+    });
+  }
+
+  order.forEach((d) => {
+    const chip = el(
+      '<button type="button" class="day-chip" aria-label="' + esc(DAY_FULL[d]) + '">' +
+        '<div class="dc-name">' + DAY_ABBR[d] + '</div>' +
+      '</button>'
+    );
+    chip.addEventListener('click', () => {
+      if (selectedDays[d] != null) {
+        delete selectedDays[d];
+        chip.classList.remove('active');
+      } else {
+        selectedDays[d] = '18:00';
+        chip.classList.add('active');
+      }
+      renderTimes();
+    });
+    daysWrap.appendChild(chip);
+  });
+
   form.querySelector('[data-act="save"]').addEventListener('click', (e) => {
     const btn = e.currentTarget;
     const name = form.querySelector('#ng-name').value.trim();
@@ -401,8 +445,11 @@ function openCreateGroupForm(sheetContent, onCreated) {
     if (!name) { box.appendChild(el('<div class="err-msg">Nomini kiriting</div>')); return; }
     if (!totalPrice || totalPrice <= 0) { box.appendChild(el('<div class="err-msg">Narxni kiriting</div>')); return; }
     if (!lessonsCount || lessonsCount <= 0) { box.appendChild(el('<div class="err-msg">Dars sonini kiriting</div>')); return; }
+    const days = Object.keys(selectedDays);
+    if (!days.length) { box.appendChild(el('<div class="err-msg">Kamida bitta dars kunini tanlang</div>')); return; }
+    const schedule = days.map((d) => ({ dayOfWeek: parseInt(d, 10), lessonTime: selectedDays[d] }));
     setBusy(btn, true);
-    api('/api/admin/groups', { method: 'POST', body: { name, totalPrice, lessonsCount } })
+    api('/api/admin/groups', { method: 'POST', body: { name, totalPrice, lessonsCount, schedule } })
       .then((group) => {
         form.remove();
         state.currentGroupId = group.id;
