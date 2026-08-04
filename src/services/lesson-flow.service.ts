@@ -13,7 +13,7 @@ export type AttStatus = 'came' | 'missed_unexcused' | 'missed_excused';
 /**
  * Davomat + to'lov mantig'i — bot va mini app ikkalasi ham shu servisdan foydalanadi.
  * came / missed_unexcused → dars narxi (guruhning total/lessonsCount) yechiladi, missed_excused → yechilmaydi.
- * Har o'zgarishda ota-onaga xabar ketadi.
+ * Ota-onaga push xabar yuborilmaydi — yechim jim amalga oshadi.
  */
 @Injectable()
 export class LessonFlowService {
@@ -42,30 +42,16 @@ export class LessonFlowService {
 
     let paymentNote: string;
     if (status === 'came' || status === 'missed_unexcused') {
-      const newCharge = await this.payments.charge(lessonId, studentId, lessonPrice);
+      await this.payments.charge(lessonId, studentId, lessonPrice);
       const pay = await this.payments.status(studentId);
       paymentNote = `💳 ${fmtMoney(lessonPrice)} yechildi. Qoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`;
-      if (newCharge) {
-        const reason =
-          status === 'came'
-            ? `${n}-dars bo'lib o'tdi`
-            : `${n}-dars (kelmadi, oldindan ogohlantirilmagan)`;
-        await this.notify.notifyParents(
-          studentId,
-          `💳 ${student.name}: ${reason}.\n${fmtMoney(lessonPrice)} hisobdan yechildi.\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
-        );
-      }
       await this.maybeAskHomework(lesson.groupId, lessonId, n);
       return { student, n, paymentNote, pay };
     }
 
-    const removed = await this.payments.uncharge(lessonId, studentId);
+    await this.payments.uncharge(lessonId, studentId);
     const pay = await this.payments.status(studentId);
     paymentNote = `💳 To'lov yechilmadi. Qoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars)`;
-    await this.notify.notifyParents(
-      studentId,
-      `⚠️ ${student.name}: ${n}-darsga kela olmasligini oldindan ogohlantirgan.\nBu dars uchun to'lov yechilmadi.${removed ? ' (Avvalgi yechilgan summa qaytarildi.)' : ''}\n\nQoldiq: ${fmtMoney(pay.remaining)} (${pay.lessonsLeft} ta dars qoldi)`,
-    );
     await this.maybeAskHomework(lesson.groupId, lessonId, n);
     return { student, n, paymentNote, pay };
   }
