@@ -270,6 +270,7 @@ const TABS = {
   ],
   student: [
     { id: 'home', label: 'Bosh', icon: 'home' },
+    { id: 'attendance', label: 'Davomat', icon: 'calendar' },
     { id: 'shop', label: 'Shop', icon: 'bag' },
   ],
 };
@@ -313,7 +314,7 @@ function renderApp() {
 
   const renderers = role === 'admin'
     ? { home: renderAdminHome, students: renderAdminStudents, shop: renderAdminShop }
-    : { home: renderStudentHome, shop: renderStudentShop };
+    : { home: renderStudentHome, attendance: renderStudentAttendance, shop: renderStudentShop };
 
   (renderers[state.tab] || renderers.home)();
 }
@@ -1356,15 +1357,30 @@ function renderStudentHome() {
       s.appendChild(tl);
     }
 
-    /* Davomat */
-    s.appendChild(el('<h2 class="section-title">Davomat</h2>'));
+    mountScreen(s);
+  }).catch((e) => { if (!e.silent) screenError(e.message, renderStudentHome); });
+}
+
+/* =========================================================
+   O'QUVCHI: DAVOMAT
+   ========================================================= */
+function renderStudentAttendance() {
+  api('/api/me').then((me) => {
+    const s = el('<div class="screen"></div>');
+
+    s.appendChild(el('<h2 class="section-title">Dars jadvali</h2>'));
+    const attByDate = {};
+    (me.attendance || []).forEach((a) => { attByDate[a.lessonDate] = a.status; });
+    s.appendChild(renderDayChips(me.schedule, attByDate));
+
+    s.appendChild(el('<h2 class="section-title">Davomat tarixi</h2>'));
     const att = me.attendance || [];
     if (!att.length) {
       s.appendChild(el('<div class="empty-state">' + icon('calendar', 32) + '<div>Davomat hali yo’q</div></div>'));
     } else {
       const card = el('<div class="form-card"><div class="detail-list"></div></div>');
       const list = card.querySelector('.detail-list');
-      att.forEach((a) => {
+      att.slice().reverse().forEach((a) => {
         const lb = ATT_LABELS[a.status] || { text: a.status, cls: 'gray', icon: 'alert' };
         list.appendChild(el(
           '<div class="detail-row">' +
@@ -1377,7 +1393,7 @@ function renderStudentHome() {
     }
 
     mountScreen(s);
-  }).catch((e) => { if (!e.silent) screenError(e.message, renderStudentHome); });
+  }).catch((e) => { if (!e.silent) screenError(e.message, renderStudentAttendance); });
 }
 
 /* =========================================================
