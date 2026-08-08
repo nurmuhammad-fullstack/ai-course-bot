@@ -92,8 +92,8 @@ export class AdminHandler {
       case BTN.SCHEDULE:
         return this.showSchedule(ctx, groupId);
       case BTN.FINISH_LESSON: {
-        if (!(await this.lessons.scheduleForDay(groupId, todayDayOfWeek()))) {
-          await ctx.reply("❌ Bugun dars kuni emas — darsni yakunlab bo'lmaydi.\n\nDars kunlari: «🕐 Dars jadvali» bo'limida.");
+        if (!(await this.todayLessonConfirmed(groupId))) {
+          await ctx.reply("❌ Bugun dars tasdiqlanmagan — darsni yakunlab bo'lmaydi.\n\nErtalabki so'rovda \"Ha\" deb javob bering yoki kuting.");
           return;
         }
         await ctx.reply('Bugungi darsni yakunlab, davomat va to‘lovni belgilaymizmi?', {
@@ -158,16 +158,16 @@ export class AdminHandler {
   }
 
   private async handleStateStep(ctx: Context, chatId: string, st: any, text?: string) {
-    // Ertalabki tasdiqda bugungi dars vaqtini kiritish
+    // Ertalabki tasdiqda bugungi dars vaqtini kiritish (faqat shu kun uchun, doimiy jadval o'zgarmaydi)
     if (st.step === 'daytime_time' && text) {
       const t = parseTime(text);
       if (!t) {
         await ctx.reply("❌ Format noto'g'ri. Masalan: 15:30");
         return;
       }
-      await this.lessons.setTime(st.groupId, todayDayOfWeek(), text);
       this.state.clear(chatId);
-      await ctx.reply(`✅ Bugungi dars ${text} ga o'rnatildi. O'quvchilarga xabar yuborilmoqda...`, {
+      await this.settings.set(`lesson_today:${st.groupId}:${todayDate()}`, `yes:${text}`);
+      await ctx.reply(`✅ Bugungi dars ${text} ga belgilandi. O'quvchilarga xabar yuborilmoqda...`, {
         reply_markup: adminMenu(),
       });
       await this.broadcastToStudents(
@@ -579,8 +579,8 @@ export class AdminHandler {
 
     if (data.startsWith('lessonend:start:')) {
       const groupId = parseInt(data.split(':')[2], 10);
-      if (!(await this.lessons.scheduleForDay(groupId, todayDayOfWeek()))) {
-        await ctx.answerCallbackQuery({ text: 'Bugun dars kuni emas!', show_alert: true });
+      if (!(await this.todayLessonConfirmed(groupId))) {
+        await ctx.answerCallbackQuery({ text: 'Bugun dars tasdiqlanmagan!', show_alert: true });
         return;
       }
       await ctx.answerCallbackQuery();
@@ -589,32 +589,28 @@ export class AdminHandler {
       return;
     }
 
-    // Ertalabki dars vaqti tasdig'i
-    if (data.startsWith('daytime:ok:')) {
+    // Ertalabki: "Ha, bugun dars bo'ladi"
+    if (data.startsWith('daytime:yes:')) {
       const groupId = parseInt(data.split(':')[2], 10);
       const sched = await this.lessons.scheduleForDay(groupId, todayDayOfWeek());
-      if (!sched) {
-        await ctx.answerCallbackQuery({ text: 'Bugun dars kuni emas' });
-        return;
+      if (sched) {
+        await this.confirmTodayLesson(ctx, groupId, sched.lessonTime);
+      } else {
+        this.state.set(chatId, { step: 'daytime_time', groupId });
+        await ctx.answerCallbackQuery();
+        await ctx.reply('🕐 Bugungi dars vaqtini kiriting (masalan 15:30):', {
+          reply_markup: cancelKeyboard(),
+        });
       }
-      await ctx.answerCallbackQuery();
-      await ctx.editMessageText(`✅ Tasdiqlandi: bugun ${sched.lessonTime} da dars. O'quvchilarga xabar yuborilmoqda...`).catch(() => undefined);
-      await this.broadcastToStudents(
-        ctx.api,
-        groupId,
-        `📚 Bugun darsimiz bor!\n🕐 Soat ${sched.lessonTime} da boshlanadi. Tayyor bo'ling 💪`,
-      );
-      await ctx.reply("📨 O'quvchilarga xabar yuborildi.");
       return;
     }
 
-    if (data.startsWith('daytime:edit:')) {
+    // Ertalabki: "Yo'q, bugun dars yo'q"
+    if (data.startsWith('daytime:no:')) {
       const groupId = parseInt(data.split(':')[2], 10);
-      this.state.set(chatId, { step: 'daytime_time', groupId });
+      await this.settings.set(`lesson_today:${groupId}:${todayDate()}`, 'no');
       await ctx.answerCallbackQuery();
-      await ctx.reply('🕐 Bugungi dars vaqtini kiriting (masalan 15:30):', {
-        reply_markup: cancelKeyboard(),
-      });
+      await ctx.editMessageText("✅ Qabul qilindi: bugun dars yo'q.").catch(() => undefined);
       return;
     }
 
@@ -872,6 +868,25 @@ export class AdminHandler {
     await ctx.answerCallbackQuery({ text: 'Yuborildi ✅' });
     await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
     await ctx.reply('✅ Uyga vazifa guruhga yuborildi!');
+  }
+
+  /** Bugun shu guruh uchun "Ha, dars bo'ladi" deb tasdiqlanganmi (ertalabki so'rovda) */
+  private async todayLessonConfirmed(groupId: number): Promise<boolean> {
+    const raw = await this.settings.get(`lesson_today:${groupId}:${todayDate()}`);
+    return !!raw && raw.startsWith('yes:');
+  }
+
+  /** Bugun dars bo'lishini (berilgan vaqtda) qayd etadi va o'quvchilarga xabar beradi */
+  private async confirmTodayLesson(ctx: Context, groupId: number, time: string) {
+    await this.settings.set(`lesson_today:${groupId}:${todayDate()}`, `yes:${time}`);
+    await ctx.answerCallbackQuery();
+    await ctx.editMessageText(`✅ Tasdiqlandi: bugun ${time} da dars. O'quvchilarga xabar yuborilmoqda...`).catch(() => undefined);
+    await this.broadcastToStudents(
+      ctx.api,
+      groupId,
+      `📚 Bugun darsimiz bor!\n🕐 Soat ${time} da boshlanadi. Tayyor bo'ling 💪`,
+    );
+    await ctx.reply("📨 O'quvchilarga xabar yuborildi.");
   }
 
   // ── Yordamchilar ────────────────────────────────────────────────────────────

@@ -84,30 +84,32 @@ export class SchedulerService {
   }
 
   /**
-   * Ertalabki 11:00 (Toshkent) — har faol guruh uchun alohida: dars kuni bo'lsa
-   * avval ADMINDAN vaqtni tasdiqlash so'raladi (guruh nomi bilan).
+   * Ertalabki 11:00 (Toshkent) — har faol guruh uchun alohida, haftalik jadvaldan
+   * qat'iy nazar: ADMINDAN "bugun dars bo'ladimi?" so'raladi (reja kunma-kun o'zgarishi mumkin).
    */
   @Cron(`0 ${MORNING_UTC_HOUR} * * *`, { utcOffset: 0 })
   async morningReminder() {
     const groups = await this.courseGroups.list();
     const dayOfWeek = todayDayOfWeek();
+    const today = todayDate();
     for (const group of groups) {
       const sched = await this.lessons.scheduleForDay(group.id, dayOfWeek);
-      if (!sched) continue;
+      const suggestedTime = sched?.lessonTime;
 
       await this.botService.api
         .sendMessage(
           this.botService.adminId,
-          `☀️ «${group.name}»: bugun (${DAY_NAMES[sched.dayOfWeek]}) dars kuni!\n\n🕐 Dars soat nechada bo'ladi? Joriy jadval: ${sched.lessonTime}\n\nTasdiqlasangiz, o'quvchilarga «Bugun darsimiz bor» xabari ketadi:`,
+          `☀️ «${group.name}»: bugun (${DAY_NAMES[dayOfWeek]}) dars bo'ladimi?` +
+            (suggestedTime ? `\n\n🕐 Joriy jadval: ${suggestedTime}` : ''),
           {
             reply_markup: new InlineKeyboard()
-              .text(`✅ ${sched.lessonTime} — tasdiqlash`, `daytime:ok:${group.id}`)
+              .text(suggestedTime ? `✅ Ha, ${suggestedTime} da` : '✅ Ha, vaqt kiritish', `daytime:yes:${group.id}`)
               .row()
-              .text('🕐 Boshqa vaqt kiritish', `daytime:edit:${group.id}`),
+              .text("❌ Yo'q, bugun dars yo'q", `daytime:no:${group.id}`),
           },
         )
         .catch(() => undefined);
-      this.logger.log(`«${group.name}» uchun admin'dan dars vaqti tasdig'i so'raldi`);
+      this.logger.log(`«${group.name}» (${today}) uchun admin'dan bugungi dars holati so'raldi`);
     }
   }
 
@@ -117,14 +119,14 @@ export class SchedulerService {
     await this.homeworkReminder().catch((e) => this.logger.error(e?.message ?? e));
 
     const groups = await this.courseGroups.list();
-    const dayOfWeek = todayDayOfWeek();
+    const today = todayDate();
     const now = nowHM();
 
     for (const group of groups) {
-      const sched = await this.lessons.scheduleForDay(group.id, dayOfWeek);
-      if (!sched) continue;
+      const lessonTime = await this.todayLessonTime(group.id, today);
+      if (!lessonTime) continue;
 
-      const t = parseTime(sched.lessonTime);
+      const t = parseTime(lessonTime);
       if (!t) continue;
 
       const pre = addMinutes(t, -PRE_LESSON_MINUTES);
@@ -132,12 +134,12 @@ export class SchedulerService {
         await this.admin.broadcastToStudents(
           this.botService.api,
           group.id,
-          `⏰ Diqqat! ${PRE_LESSON_MINUTES} daqiqadan so'ng (${sched.lessonTime} da) dars boshlanadi!`,
+          `⏰ Diqqat! ${PRE_LESSON_MINUTES} daqiqadan so'ng (${lessonTime} da) dars boshlanadi!`,
         );
         await this.botService.api
           .sendMessage(
             this.botService.adminId,
-            `⏰ «${group.name}»: ${sched.lessonTime} da dars boshlanadi — ${PRE_LESSON_MINUTES} daqiqa qoldi.`,
+            `⏰ «${group.name}»: ${lessonTime} da dars boshlanadi — ${PRE_LESSON_MINUTES} daqiqa qoldi.`,
           )
           .catch(() => undefined);
         this.logger.log(`«${group.name}»: 10 daqiqalik eslatma yuborildi`);
@@ -157,6 +159,13 @@ export class SchedulerService {
         this.logger.log(`«${group.name}»: admin'ga dars yakuni so'rovi yuborildi`);
       }
     }
+  }
+
+  /** Bugun shu guruh uchun tasdiqlangan dars vaqti (settings: lesson_today:<groupId>:<date> = "yes:HH:MM" | "no") */
+  private async todayLessonTime(groupId: number, date: string): Promise<string | null> {
+    const raw = await this.settings.get(`lesson_today:${groupId}:${date}`);
+    if (!raw || !raw.startsWith('yes:')) return null;
+    return raw.slice(4);
   }
 
   /** Uyga vazifa 1 soat ichida yuborilmasa — adminni eslatadi (har guruh mustaqil, yuborilguncha har soatda) */
